@@ -1,0 +1,30 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: delineate-ai-app-ingress
+  namespace: production
+  labels:
+    app: delineate-ai-app
+    environment: production
+  annotations:
+    kubernetes.io/ingress.class: gce
+    cloud.google.com/backend-config: '{"default": "delineate-ai-app-backend-config"}'
+    cloud.google.com/load-balancer-type: "External"
+
+spec:
+  ingressClassName: gce
+  tls:
+    - hosts:
+        - ai-prod.delineate.pro
+      secretName: cloudflare-origin-delineate
+  rules:
+    - host: ai-prod.delineate.pro
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: delineate-ai-app-service
+                port:
+                  number: 8000

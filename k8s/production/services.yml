@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: delineate-ai-app-service
+  namespace: production
+  labels:
+    app: delineate-ai-app-production
+    environment: production
+  annotations:
+    # Link to BackendConfig for sticky sessions and WebSocket support
+    cloud.google.com/backend-config: '{"default": "delineate-ai-app-backend-config"}'
+spec:
+  selector:
+    app: delineate-ai-app-production
+  ports:
+  - protocol: TCP
+    port: 8000
+    targetPort: 8000
+  type: ClusterIP

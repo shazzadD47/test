@@ -1,0 +1,24 @@
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: delineate-ai-app-backend-config
+  namespace: dev
+spec:
+  # Enable session affinity for WebSocket connections
+  sessionAffinity:
+    affinityType: "CLIENT_IP"
+    affinityCookieTtlSec: 3600
+  # Set timeout for long-running connections like WebSockets
+  timeoutSec: 3600
+  # Enable connection draining
+  connectionDraining:
+    drainingTimeoutSec: 60
+  # Configure health check
+  healthCheck:
+    checkIntervalSec: 10
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 3
+    type: HTTP
+    requestPath: /health
+    port: 8000

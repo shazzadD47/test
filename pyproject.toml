@@ -1,0 +1,8 @@
+[tool.pytest.ini_options]
+pythonpath = "."
+addopts = [
+    "--import-mode=importlib",
+]
+
+[tool.bandit]
+exclude_dirs = ["tests"]

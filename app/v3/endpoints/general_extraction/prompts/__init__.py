@@ -1,0 +1,21 @@
+from app.v3.endpoints.general_extraction.prompts.commons import (
+    SYSTEM_INSTRUCTION,
+)
+from app.v3.endpoints.general_extraction.prompts.no_root import (
+    LABEL_CONTEXT_GENERATION_NO_ROOT_PROMPT,
+    LABEL_QUESTION_GENERATION_PROMPT,
+)
+from app.v3.endpoints.general_extraction.prompts.with_root import (
+    LABEL_CONTEXT_GENERATION_PROMPT,
+    LABEL_CONTEXT_GENERATION_ROOT_PROMPT,
+    LABEL_QUESTION_GENERATION_FROM_ROOT_LABELS_PROMPT,
+)
+
+__all__ = [
+    "SYSTEM_INSTRUCTION",
+    "LABEL_QUESTION_GENERATION_PROMPT",
+    "LABEL_CONTEXT_GENERATION_NO_ROOT_PROMPT",
+    "LABEL_CONTEXT_GENERATION_ROOT_PROMPT",
+    "LABEL_CONTEXT_GENERATION_PROMPT",
+    "LABEL_QUESTION_GENERATION_FROM_ROOT_LABELS_PROMPT",
+]

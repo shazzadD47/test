@@ -1,0 +1,212 @@
+# dev-deployments.yaml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: delineate-ai-app-dev
+  namespace: dev
+  labels:
+    app: delineate-ai-app-dev
+    environment: dev
+spec:
+  selector:
+    matchLabels:
+      app: delineate-ai-app-dev
+  template:
+    metadata:
+      labels:
+        app: delineate-ai-app-dev
+    spec:
+      containers:
+      - name: delineate-ai-app
+        image: IMAGE_PLACEHOLDER
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu:    "1000m"
+            memory: "4Gi"
+          limits:
+            cpu:    "1000m"
+            memory: "4Gi"
+        volumeMounts:
+        - name: delineate-ai-shared-data-dev
+          mountPath: /code/data
+        envFrom:
+        - configMapRef:
+            name: delineate-ai-config-dev
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+      volumes:
+      - name: delineate-ai-shared-data-dev
+        persistentVolumeClaim:
+          claimName: delineate-ai-shared-data-dev
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: delineate-ai-default-celery
+  namespace: dev
+  labels:
+    app: delineate-ai-default-celery
+    environment: dev
+spec:
+  selector:
+    matchLabels:
+      app: delineate-ai-default-celery
+  template:
+    metadata:
+      labels:
+        app: delineate-ai-default-celery
+    spec:
+      containers:
+      - name: default-celery
+        image: IMAGE_PLACEHOLDER
+        command:
+        - celery
+        - -A
+        - app.core.celery.app
+        - worker
+        - -n
+        - default-io-celery@%h
+        - -Q
+        - delineate-ai-queue,dosing-table
+        - --loglevel=INFO
+        - -P
+        - prefork
+        - --concurrency=8
+        - --events
+        resources:
+          requests:
+            cpu:    "2000m"
+            memory: "8Gi"
+          limits:
+            cpu:    "2000m"
+            memory: "8Gi"
+        volumeMounts:
+        - name: delineate-ai-shared-data-dev
+          mountPath: /code/data
+        envFrom:
+        - configMapRef:
+            name: delineate-ai-config-dev
+      volumes:
+      - name: delineate-ai-shared-data-dev
+        persistentVolumeClaim:
+          claimName: delineate-ai-shared-data-dev
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: delineate-ai-cpu-celery
+  namespace: dev
+  labels:
+    app: delineate-ai-cpu-celery
+    environment: dev
+spec:
+  selector:
+    matchLabels:
+      app: delineate-ai-cpu-celery
+  template:
+    metadata:
+      labels:
+        app: delineate-ai-cpu-celery
+    spec:
+      containers:
+      - name: cpu-celery
+        image: IMAGE_PLACEHOLDER
+        command:
+        - celery
+        - -A
+        - app.core.celery.app
+        - worker
+        - -n
+        - cpu-celery@%h
+        - -Q
+        - cpu-tasks
+        - --loglevel=INFO
+        - -P
+        - prefork
+        - --concurrency=4
+        - --events
+        resources:
+          requests:
+            cpu:    "2000m"
+            memory: "8Gi"
+          limits:
+            cpu:    "2000m"
+            memory: "8Gi"
+        volumeMounts:
+        - name: delineate-ai-shared-data-dev
+          mountPath: /code/data
+        envFrom:
+        - configMapRef:
+            name: delineate-ai-config-dev
+      volumes:
+      - name: delineate-ai-shared-data-dev
+        persistentVolumeClaim:
+          claimName: delineate-ai-shared-data-dev
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: delineate-ai-general-extraction-celery
+  namespace: dev
+  labels:
+    app: delineate-ai-general-extraction-celery
+    environment: dev
+spec:
+  selector:
+    matchLabels:
+      app: delineate-ai-general-extraction-celery
+  template:
+    metadata:
+      labels:
+        app: delineate-ai-general-extraction-celery
+    spec:
+      containers:
+      - name: general-extraction-celery
+        image: IMAGE_PLACEHOLDER
+        command:
+        - celery
+        - -A
+        - app.core.celery.app
+        - worker
+        - -n
+        - general-extraction@%h
+        - -Q
+        - general-extraction
+        - --loglevel=INFO
+        - -P
+        - prefork
+        - --concurrency=12
+        - --events
+        resources:
+          requests:
+            cpu:    "2000m"
+            memory: "8Gi"
+          limits:
+            cpu:    "2000m"
+            memory: "8Gi"
+        volumeMounts:
+        - name: delineate-ai-shared-data-dev
+          mountPath: /code/data
+        envFrom:
+        - configMapRef:
+            name: delineate-ai-config-dev
+      volumes:
+      - name: delineate-ai-shared-data-dev
+        persistentVolumeClaim:
+          claimName: delineate-ai-shared-data-dev

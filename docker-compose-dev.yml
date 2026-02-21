@@ -1,0 +1,93 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/code
+      - ~/.cache/ai-app-pip-cache:/root/.cache/pip
+    environment:
+      ENV: "local"
+      MONGODB_DATABASE_NAME: Delineate_Prod
+      PORT: 8000
+    depends_on:
+      - io-celery
+      - cpu-celery
+
+  io-celery:
+    container_name: dt-ai-io-celery
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: celery -A app.core.celery.app worker -n io-celery@%h -Q delineate-ai-queue,dosing-table,general-extraction --loglevel=INFO -P prefork --concurrency=4 --events
+    volumes:
+      - .:/code
+      - ~/.cache/ai-app-pip-cache:/root/.cache/pip
+    depends_on:
+      - redis
+    environment:
+      PYTHONUNBUFFERED: 1
+
+  cpu-celery:
+    container_name: dt-ai-cpu-celery
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: celery -A app.core.celery.app worker -n cpu-celery@%h -Q cpu-tasks --loglevel=INFO -P prefork --concurrency=4 --events
+    volumes:
+      - .:/code
+      - ~/.cache/ai-app-pip-cache:/root/.cache/pip
+    depends_on:
+      - redis
+    environment:
+      PYTHONUNBUFFERED: 1
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+  redis:
+    container_name: dt-ai-redis
+    image: redis:alpine
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./data/redis:/data
+    environment:
+      - REDIS_PASSWORD=123456
+
+  flower:
+    container_name: dt-ai-flower
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: >
+      celery -A app.core.celery.app flower
+      --persistent=True
+      --db=/data/flower.db
+      --state_save_interval=5
+      --max_tasks=10000
+      --tasks_columns=name,uuid,state,args,kwargs,result,received,started,runtime,worker
+      --enable_events=True
+      --inspect_timeout=10000
+    ports:
+      - "5555:5555"
+    volumes:
+      - .:/code
+      - flower_data:/data
+    environment:
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      - redis
+
+volumes:
+  rabbitmq_data:
+  flower_data:

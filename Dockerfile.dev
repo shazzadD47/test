@@ -1,0 +1,33 @@
+FROM python:3.11-slim-bookworm
+
+WORKDIR /code
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    wget \
+    libgl1 \
+    libglib2.0-0 \
+    default-jdk \
+    texlive-xetex \
+    texlive-fonts-recommended \
+    texlive-plain-generic \
+    pandoc \
+    curl ca-certificates \
+    build-essential && \
+    # Clean up apt cache to reduce image size
+    rm -rf /var/lib/apt/lists/*
+
+ADD https://astral.sh/uv/install.sh /uv-installer.sh
+RUN sh /uv-installer.sh && rm /uv-installer.sh
+ENV PATH="/root/.local/bin/:$PATH"
+
+# Copy the requirements file first to leverage Docker's build cache
+COPY ./requirements.txt /code/requirements.txt
+
+RUN uv pip install --system -r /code/requirements.txt
+
+COPY . /code
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app","--host","0.0.0.0", "--reload","--workers","2", "--timeout-keep-alive","600"]

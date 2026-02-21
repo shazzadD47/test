@@ -1,0 +1,32 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: delineate-ai-app-ingress
+  namespace: dev
+  labels:
+    app: delineate-ai-app
+    environment: dev
+  annotations:
+    kubernetes.io/ingress.class: gce
+    # Enable sticky sessions using BackendConfig
+    cloud.google.com/backend-config: '{"default": "delineate-ai-app-backend-config"}'
+    # Enable WebSocket support
+    cloud.google.com/load-balancer-type: "External"
+
+spec:
+  ingressClassName: gce
+  tls:
+  - hosts:
+    - ai-dev.delineate.pro
+    secretName: cloudflare-orgin-delineate
+  rules:
+  - host: ai-dev.delineate.pro
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: delineate-ai-app-service
+            port:
+              number: 8000
