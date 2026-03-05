@@ -14,9 +14,12 @@ Pipeline steps (before -> after):
   4. Event data: obs_all + dose -> one DataFrame with event_type OBS/DOSE.
   5. Merge covariate (on group).
   6. Backfill: FROM_OBS_COLS from OBS into DOSE by group; arm-level ffill/bfill.
+  6b. Round ARM_TIME to whole numbers (round-half-up); leave null/NA unchanged.
   7. Uppercase columns, EVID/MDV, fill DOSE from OBS by group, post-fill by GROUP.
   8. Paper labels: merge on FILE_NAME via _merge_paper_labels(); fill study columns.
-  9. Rename to final schema, coalesce duplicates, FINAL_COLUMNS order.
+  9. Rename to final schema, coalesce duplicates, drop internal columns, normalize NA.
+ 10. Row order: sort by arm (FILE_NAME, GROUP_NAME, ARM_NUMBER) then EVID descending
+     so dose rows precede observation rows within each arm.
 
 All merges are left joins; source tables are not modified.
 """
@@ -28,8 +31,8 @@ import pandas as pd
 
 from app.v3.endpoints.merging.constants import (
     ARM_LEVEL_COLS,
-    FINAL_COLUMNS,
     FROM_OBS_COLS,
+    INTERNAL_COLUMNS_TO_DROP,
     POST_FILL_COLS,
     RENAME_MAP,
 )
@@ -42,7 +45,7 @@ from app.v3.endpoints.merging.merge_transform import (
     normalize_aliases,
     std_group,
 )
-from app.v3.endpoints.merging.schemas import SingleError, TablesByType
+from app.v3.endpoints.merging.schemas import QCError, TablesByType, merge_error
 
 
 def _transform_tables_by_type(tables_by_type: TablesByType) -> None:
@@ -283,7 +286,7 @@ def _merge_null_table(
     result: pd.DataFrame,
     table_name: str,
     null_df: pd.DataFrame,
-    errors: list[SingleError],
+    errors: list[QCError],
 ) -> pd.DataFrame:
     """
     Left-merge null table into result: on group, or file_name (and stu_number),
@@ -343,14 +346,14 @@ def _merge_null_table(
         return result
 
     errors.append(
-        {
-            "error_name": "Table appended (no common key)",
-            "error_message": (
+        merge_error(
+            "Table appended (no common key)",
+            (
                 f"Table '{table_name}' had no common key (group or "
                 "FILE_NAME/STU_NUMBER) with the merged result; appended as "
                 "extra rows to preserve data."
             ),
-        }
+        )
     )
     for c in result.columns:
         if c not in null_df.columns:
@@ -359,6 +362,25 @@ def _merge_null_table(
         if c not in result.columns:
             result[c] = np.nan
     return pd.concat([result, null_df], ignore_index=True, sort=False)
+
+
+def _round_arm_time_to_integer(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Round ARM_TIME (or arm_time) to whole numbers; leave null/NA unchanged.
+    Round-half-up: 12.5 or greater -> 13, 12.4 or less -> 12.
+    """
+    col = "arm_time" if "arm_time" in df.columns else "ARM_TIME"
+    if col not in df.columns:
+        return df
+    ser = pd.to_numeric(df[col], errors="coerce")
+
+    def round_half_up(x: float) -> float:
+        if pd.isna(x):
+            return x
+        return float(np.sign(x) * np.floor(np.abs(x) + 0.5))
+
+    df[col] = ser.apply(round_half_up)
+    return df
 
 
 def _fill_dose_from_obs(final_data: pd.DataFrame) -> pd.DataFrame:
@@ -399,6 +421,38 @@ def _backfill_arm_level(final_data: pd.DataFrame) -> pd.DataFrame:
     return final_data
 
 
+_ARM_ROW_ORDER_COLUMNS = ("FILE_NAME", "GROUP_NAME", "ARM_NUMBER")
+
+
+def _sort_rows_dose_before_obs_by_arm(
+    df: pd.DataFrame, errors: list[QCError]
+) -> pd.DataFrame:
+    """
+    Sort rows so that within each arm, dose events (EVID=1) come before
+    observation events (EVID=0). Uses FILE_NAME, GROUP_NAME, ARM_NUMBER
+    when present, then EVID descending. If EVID is missing, returns
+    df unchanged, logs a warning, and appends a non-fatal error.
+    """
+    if "EVID" not in df.columns:
+        msg = "EVID column not found; skipping dose-before-obs row order by arm."
+        logger.warning(msg)
+        errors.append(merge_error("Dose-before-obs row order skipped", msg))
+        return df
+    sort_columns = [c for c in _ARM_ROW_ORDER_COLUMNS if c in df.columns]
+    evid_num = pd.to_numeric(df["EVID"], errors="coerce")
+    out = df.copy()
+    out = out.assign(_EVID_NUM=evid_num)
+    sort_columns.append("_EVID_NUM")
+    ascending = [True] * (len(sort_columns) - 1) + [False]
+    out = out.sort_values(
+        by=sort_columns,
+        ascending=ascending,
+        na_position="last",
+    )
+    out = out.drop(columns=["_EVID_NUM"])
+    return out.reset_index(drop=True)
+
+
 # Study-level columns filled from paper labels (script: merge1 paper merge)
 _PAPER_FILL_COLS = [
     "STU_NUMBER",
@@ -435,7 +489,24 @@ _PAPER_FILL_COLS = [
 # Map common paper_labels column names to final schema (typo → canonical).
 _PAPER_COLUMN_ALIASES: dict[str, str] = {
     "BLINIDING": "BLINDING",
+    "FILENAME": "FILE_NAME",
 }
+
+
+def _ensure_file_name_column(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Ensure the DataFrame has a single canonical FILE_NAME column.
+    If FILENAME exists and FILE_NAME does not, create FILE_NAME from FILENAME.
+    If both exist, coalesce into FILE_NAME and drop FILENAME.
+    Caller should pass df with uppercase column names.
+    """
+    if "FILENAME" not in df.columns:
+        return df
+    if "FILE_NAME" in df.columns:
+        df["FILE_NAME"] = df["FILE_NAME"].where(df["FILE_NAME"].notna(), df["FILENAME"])
+    else:
+        df["FILE_NAME"] = df["FILENAME"]
+    return df.drop(columns=["FILENAME"], errors="ignore")
 
 
 def _merge_paper_labels(
@@ -453,16 +524,16 @@ def _merge_paper_labels(
     """
     if paper_labels is None or paper_labels.empty:
         return final_data
+    final_data = _ensure_file_name_column(final_data)
     if "FILE_NAME" not in final_data.columns:
         return final_data
     pl = paper_labels.copy()
     pl.columns = pl.columns.str.upper()
-    # Normalize common paper column names (e.g. typo BLINIDING → BLINDING)
     for old_name, new_name in _PAPER_COLUMN_ALIASES.items():
         if old_name in pl.columns and new_name not in pl.columns:
             pl = pl.rename(columns={old_name: new_name})
+    pl = _ensure_file_name_column(pl)
 
-    # Merge on FILE_NAME when pl has it; otherwise broadcast all pl columns to every row
     pl_has_file_name = "FILE_NAME" in pl.columns
     if pl_has_file_name:
         merge_keys = ["FILE_NAME"]
@@ -485,6 +556,10 @@ def _merge_paper_labels(
                 final_data[base_col] = final_data[base_col].where(
                     final_data[base_col].notna(), final_data[paper_col]
                 )
+        if "FILE_NAME_PAPER" in final_data.columns:
+            final_data["FILE_NAME"] = final_data["FILE_NAME_PAPER"].where(
+                final_data["FILE_NAME_PAPER"].notna(), final_data["FILE_NAME"]
+            )
         paper_drop = [c for c in final_data.columns if c.endswith("_PAPER")]
         final_data = final_data.drop(columns=paper_drop, errors="ignore")
     else:
@@ -559,13 +634,34 @@ def _coalesce_duplicate_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df.iloc[:, [i for i, k in enumerate(keep) if k]].copy()
 
 
+def _get_paper_labels_column_order(paper_dfs: list[pd.DataFrame]) -> list[str]:
+    """
+    Build ordered list of column names from paper_labels table(s) in canonical form.
+
+    Order = first table's columns in order, then each next table's columns not yet
+    seen. Names are uppercased and mapped via RENAME_MAP to match final_data.
+    """
+    seen: set[str] = set()
+    order: list[str] = []
+    for df in paper_dfs:
+        if df is None or len(df.columns) == 0:
+            continue
+        for c in df.columns:
+            key = str(c).strip().upper()
+            canonical = RENAME_MAP.get(key, key)
+            if canonical not in seen:
+                seen.add(canonical)
+                order.append(canonical)
+    return order
+
+
 def run_merge_flow(
     tables_by_type: TablesByType,
-    errors: list[SingleError],
-) -> tuple[pd.DataFrame | None, list[SingleError]]:
+    errors: list[QCError],
+) -> tuple[pd.DataFrame | None, list[QCError]]:
     """
     Run full merge pipeline. Before: tables_by_type, errors. After:
-    (final_data, errors) with FINAL_COLUMNS order and NA normalized; or
+    (final_data, errors) with dynamic columns (input + calculated) and NA normalized; or
     (None, errors).
     """
     try:
@@ -573,9 +669,12 @@ def run_merge_flow(
         _transform_tables_by_type(tables_by_type)
     except Exception as e:
         logger.exception(f"Transform step failed: {e}")
-        errors.append({"error_name": "Transform failed", "error_message": str(e)})
+        errors.append(merge_error("Transform failed", str(e)))
         return None, errors
 
+    paper_column_order = _get_paper_labels_column_order(
+        tables_by_type.get("paper_labels") or []
+    )
     obs_all, dose, cov, paper_labels, use_two_file_flow = _build_obs_dose_cov(
         tables_by_type
     )
@@ -599,10 +698,10 @@ def run_merge_flow(
     )
     if total_tables == 0:
         errors.append(
-            {
-                "error_name": "No tables",
-                "error_message": "No tables could be loaded; nothing to merge.",
-            }
+            merge_error(
+                "No tables",
+                "No tables could be loaded; nothing to merge.",
+            )
         )
         return None, errors
 
@@ -614,9 +713,7 @@ def run_merge_flow(
             dose = _dose_group_backfill_from_obs(dose, obs_all)
     except Exception as e:
         logger.warning(f"ARM_DUR or dose backfill failed: {e}")
-        errors.append(
-            {"error_name": "ARM_DUR / dose backfill", "error_message": str(e)}
-        )
+        errors.append(merge_error("ARM_DUR / dose backfill", str(e)))
 
     if obs_all is not None and not obs_all.empty:
         obs_all = _ci_variance_aliases(obs_all)
@@ -634,10 +731,10 @@ def run_merge_flow(
         and (paper_labels is None or paper_labels.empty)
     ):
         errors.append(
-            {
-                "error_name": "No event data",
-                "error_message": "No observation or dosing data to merge.",
-            }
+            merge_error(
+                "No event data",
+                "No observation or dosing data to merge.",
+            )
         )
         return None, errors
 
@@ -656,12 +753,13 @@ def run_merge_flow(
         try:
             final_data = _merge_cov_and_restore_dv(final_data, cov)
         except Exception as e:
-            errors.append({"error_name": "Merge covariate", "error_message": str(e)})
+            errors.append(merge_error("Merge covariate", str(e)))
 
     # Step 6: Backfill FROM_OBS_COLS, arm-level; sort; EVID/MDV; fill DOSE from OBS
     final_data = _fill_dose_from_obs(final_data)
     final_data = _backfill_arm_level(final_data)
     final_data["arm_time"] = pd.to_numeric(final_data.get("arm_time"), errors="coerce")
+    final_data = _round_arm_time_to_integer(final_data)
     if "event_type" in final_data.columns:
         final_data["_ord"] = final_data["event_type"].map({"DOSE": 0, "OBS": 1})
         sort_cols = ["group", "arm_time", "_ord"]
@@ -799,9 +897,12 @@ def run_merge_flow(
             num = pd.to_numeric(final_data[col], errors="coerce")
             final_data[col] = num.astype("Int64")
 
-    for col in FINAL_COLUMNS:
-        if col not in final_data.columns:
-            final_data[col] = np.nan
-    final_data = final_data[FINAL_COLUMNS]
+    paper_first = [c for c in paper_column_order if c in final_data.columns]
+    rest = [c for c in final_data.columns if c not in set(paper_column_order)]
+    final_data = final_data[paper_first + rest]
+
+    final_data = final_data.drop(columns=INTERNAL_COLUMNS_TO_DROP, errors="ignore")
     final_data = final_data.replace(r"(?i)^na$", "NA", regex=True)
+    if final_data is not None and not final_data.empty:
+        final_data = _sort_rows_dose_before_obs_by_arm(final_data, errors)
     return final_data, errors

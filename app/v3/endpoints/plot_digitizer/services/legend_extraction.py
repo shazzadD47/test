@@ -8,6 +8,7 @@ from app.utils.image import convert_image_to_base64, get_image_from_url
 from app.utils.tracing import setup_langfuse_handler
 from app.v3.endpoints.get_title_summery.utils.utils import secure_file_path
 from app.v3.endpoints.plot_digitizer.helpers import (
+    check_bounding_box_inside,
     check_if_dummy_legend,
     get_plot_legends,
 )
@@ -34,6 +35,7 @@ def extract_legends_from_figure(
     start_time = time.time()
     legend_found = False
     legend_found_from_legends_patch = False
+    found_legend_in_original_image = False
     extracted_legends = []
     legends_from_first_cropped_image = []
     image_bytes = None
@@ -54,14 +56,25 @@ def extract_legends_from_figure(
             with open(user_cropped_image_path, "wb") as fo:
                 fo.write(image)
             bounding_box_legend = bounding_box_legends[idx]
-            image = combine_images_vertically_with_padding(
-                image1_path=paths["original_image_path"],
-                image2_path=user_cropped_image_path,
-                bounding_box_legend=bounding_box_legend,
-                bounding_box=bounding_box,
+
+            is_legend_image_inside_plot = check_bounding_box_inside(
+                bounding_box, bounding_box_legend
             )
-            image_bytes = bytes(image)
-            image = convert_image_to_base64(image)
+            if not is_legend_image_inside_plot:
+                image = combine_images_vertically_with_padding(
+                    image1_path=paths["original_image_path"],
+                    image2_path=user_cropped_image_path,
+                    bounding_box_legend=bounding_box_legend,
+                    bounding_box=bounding_box,
+                )
+                image_bytes = bytes(image)
+                image = convert_image_to_base64(image)
+            else:
+                logger.info("Lengend image inside plot, skipping legend concatenation")
+                image_bytes = bytes(original_image)
+                image = original_image_str
+                found_legend_in_original_image = True
+
             legend_result = get_plot_legends(
                 image=image,
                 media_type=media_type,
@@ -196,6 +209,7 @@ def extract_legends_from_figure(
         extracted_legends,
         legend_found,
         legend_found_from_legends_patch,
+        found_legend_in_original_image,
         paths,
         image,
     )

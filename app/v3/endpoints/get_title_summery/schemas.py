@@ -150,6 +150,7 @@ class AnnotationItem(BaseModel):
     footnote: str | None
     number: str | None
     legends: list[MinerULegendChunk] | None = None
+    chartType: str | None = None
 
 
 class AnnotationPayload(BaseModel):

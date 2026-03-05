@@ -646,7 +646,7 @@ class PlotDigitizerHelper:
 
         upper_image = None
         if max_y2:
-            y_cut = int(max_y2) + 5
+            y_cut = int(max_y2)
             if not y_cut > self.image_main.shape[0]:
                 upper_image = self.image_main[:y_cut, :, :].copy()
 
@@ -734,3 +734,45 @@ class PlotDigitizerHelper:
             )
 
         return point_dict
+
+
+def check_bounding_box_inside(
+    bounding_box_parent: dict, bounding_box_child: dict
+) -> bool:
+    bbox_parent_coords = [
+        bounding_box_parent["top_left_x"],
+        bounding_box_parent["top_left_y"],
+        bounding_box_parent["bottom_right_x"],
+        bounding_box_parent["bottom_right_y"],
+    ]
+    bbox_child_coords = [
+        bounding_box_child["top_left_x"],
+        bounding_box_child["top_left_y"],
+        bounding_box_child["bottom_right_x"],
+        bounding_box_child["bottom_right_y"],
+    ]
+
+    # Calculate intersection coordinates
+    intersection_left = max(bbox_parent_coords[0], bbox_child_coords[0])
+    intersection_top = max(bbox_parent_coords[1], bbox_child_coords[1])
+    intersection_right = min(bbox_parent_coords[2], bbox_child_coords[2])
+    intersection_bottom = min(bbox_parent_coords[3], bbox_child_coords[3])
+
+    # Check if there's an intersection
+    if (
+        intersection_left >= intersection_right
+        or intersection_top >= intersection_bottom
+    ):
+        return False
+
+    # Calculate areas
+    intersection_area = (intersection_right - intersection_left) * (
+        intersection_bottom - intersection_top
+    )
+    child_area = (bbox_child_coords[2] - bbox_child_coords[0]) * (
+        bbox_child_coords[3] - bbox_child_coords[1]
+    )
+
+    # Check if more than 90% of child bbox is inside parent bbox
+    overlap_ratio = intersection_area / child_area if child_area > 0 else 0
+    return overlap_ratio > 0.9

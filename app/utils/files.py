@@ -12,28 +12,34 @@ from app.logging import logger
 from app.utils.texts import convert_data_to_string
 
 
-def create_data_uri_schema(
-    file_path: str, mime_type: str | None = None, return_mime_type: bool = False
-):
+def _read_and_encode_file(file_path: str) -> tuple[str, str]:
+    """Read a file and return (base64_data, mime_type)."""
     with open(file_path, "rb") as f:
         file_content = f.read()
 
+    mime_type, _ = guess_type(file_path)
     if mime_type is None:
-        mime_type, _ = guess_type(file_path)
+        mime_type = "application/octet-stream"
 
-        # If guess fails, fall back to a default
-        if mime_type is None:
-            mime_type = "application/octet-stream"
+    b64 = base64.b64encode(file_content).decode("utf-8")
+    return b64, mime_type
+
+
+def create_data_uri_schema(
+    file_path: str, mime_type: str | None = None, return_mime_type: bool = False
+):
+    if mime_type is None:
+        b64, detected_mime = _read_and_encode_file(str(file_path))
+        mime_type = detected_mime
+    else:
+        b64, _ = _read_and_encode_file(str(file_path))
+
+    data_uri = f"data:{mime_type};base64,{b64}"
 
     if return_mime_type:
-        return (
-            f"data:{mime_type};base64,{base64.b64encode(file_content).decode('utf-8')}",
-            mime_type,
-        )
+        return data_uri, mime_type
     else:
-        return (
-            f"data:{mime_type};base64,{base64.b64encode(file_content).decode('utf-8')}"
-        )
+        return data_uri
 
 
 def check_file_llm_usability(mime_type: str, model_name: str) -> bool:

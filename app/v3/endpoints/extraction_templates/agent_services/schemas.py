@@ -73,8 +73,8 @@ class BaseRow(BaseModel):
         pattern=r"^[a-zA-Z0-9_]+$",
     )
     description: str = Field(
+        default="",
         description="The description of the row.",
-        min_length=1,
     )
 
 

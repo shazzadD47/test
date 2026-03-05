@@ -43,13 +43,13 @@ def na_strings_to_nan(df: pd.DataFrame) -> pd.DataFrame:
 def normalize_aliases(df: pd.DataFrame) -> pd.DataFrame:
     """
     Unify file_name/filename and doi_url/doi so merges don't duplicate columns.
-    - If both file_name and filename exist: keep file_name, fill from filename,
-      drop filename.
+    - If both file_name and filename exist: keep file_name column but prioritize
+      filename (from fileName) over file_name (from FILE_NAME); drop filename.
     - If only filename: rename to file_name.
     - Same for doi_url and doi.
     """
     if "file_name" in df.columns and "filename" in df.columns:
-        df["file_name"] = df["file_name"].where(df["file_name"].notna(), df["filename"])
+        df["file_name"] = df["filename"].where(df["filename"].notna(), df["file_name"])
         df = df.drop(columns=["filename"], errors="ignore")
     elif "file_name" not in df.columns and "filename" in df.columns:
         df = df.rename(columns={"filename": "file_name"})

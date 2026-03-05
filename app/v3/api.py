@@ -12,6 +12,7 @@ from app.v3.endpoints.column_standardization.routers import (
 from app.v3.endpoints.covariate_extraction.routers import router as covariate_router
 from app.v3.endpoints.delete.delete import router as delete_router
 from app.v3.endpoints.dosing_table.routers import router as dosing_table_router
+from app.v3.endpoints.dynamic_dosing.routers import router as dynamic_dosing_router
 from app.v3.endpoints.extraction_templates.routers import (
     router as extraction_templates_router,
 )
@@ -40,6 +41,7 @@ api_router_v3 = APIRouter(prefix="/v3")
 
 api_router_v3.include_router(autofill_router)
 api_router_v3.include_router(dosing_table_router)
+api_router_v3.include_router(dynamic_dosing_router)
 api_router_v3.include_router(title_summary_router)
 api_router_v3.include_router(project_router)
 api_router_v3.include_router(text_to_graph_router_3)

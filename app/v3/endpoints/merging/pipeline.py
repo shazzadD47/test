@@ -12,7 +12,7 @@ from app.v3.endpoints.merging.load_tables import load_and_parse_tables
 from app.v3.endpoints.merging.logging import logger
 from app.v3.endpoints.merging.merge import run_whole_merge
 from app.v3.endpoints.merging.merge_flow import run_merge_flow
-from app.v3.endpoints.merging.schemas import MergeResponse, SingleError
+from app.v3.endpoints.merging.schemas import MergeResponse, QCError, merge_error
 from app.v3.endpoints.merging.standardization import run_standardization
 from app.v3.endpoints.merging.utils import (
     check_if_null,
@@ -35,11 +35,8 @@ def remove_empty_errors(error_log: dict) -> dict:
     return updated_error_log
 
 
-def prepare_error_log(error_log: dict) -> list[dict]:
-    error_log_list = []
-    for key, value in error_log.items():
-        error_log_list.append({"error_name": key, "error_message": value})
-    return error_log_list
+def prepare_error_log(error_log: dict) -> list[QCError]:
+    return [merge_error(key, value) for key, value in error_log.items()]
 
 
 def run_merge(table_dict: dict) -> MergeResponse:
@@ -62,7 +59,7 @@ def run_merge(table_dict: dict) -> MergeResponse:
             errors=[], status="success", metadata={}
         )
     """
-    errors: list[SingleError] = []
+    errors: list[QCError] = []
     try:
         # Step 1: Load and parse each table from table_url -> tables_by_type, errors
         tables_by_type, errors = load_and_parse_tables(table_dict)
@@ -77,10 +74,10 @@ def run_merge(table_dict: dict) -> MergeResponse:
         if n_loaded == 0:
             if not errors:
                 errors.append(
-                    {
-                        "error_name": "No tables loaded",
-                        "error_message": "No tables could be downloaded or parsed.",
-                    }
+                    merge_error(
+                        "No tables loaded",
+                        "No tables could be downloaded or parsed.",
+                    )
                 )
             return MergeResponse(
                 final_df="",
@@ -110,12 +107,7 @@ def run_merge(table_dict: dict) -> MergeResponse:
         )
     except Exception as e:
         logger.exception(f"Merge flow failed: {e}")
-        errors.append(
-            {
-                "error_name": "Merge failed",
-                "error_message": str(e),
-            }
-        )
+        errors.append(merge_error("Merge failed", str(e)))
         return MergeResponse(
             final_df="",
             errors=errors,
@@ -129,7 +121,7 @@ def run_merge_and_qc(table_dict: dict) -> MergeResponse:
     V0 merge+QC flow: download tables, group QC, run_whole_merge, standardization,
     then return MergeResponse with CSV and optional cost metadata.
     """
-    error_log = []
+    error_log: list[QCError] = []
     try:
         tables_df, updated_table_info = {}, []
         for table_info in table_dict["tables"]:
@@ -140,18 +132,16 @@ def run_merge_and_qc(table_dict: dict) -> MergeResponse:
                 df = pd.read_csv(StringIO(file_content.decode("utf-8")))
             except Exception as e:
                 error_log.append(
-                    {
-                        "error_name": (
-                            f"Error reading table {table_info['table_name']}"
-                        ),
-                        "error_message": (
+                    merge_error(
+                        f"Error reading table {table_info['table_name']}",
+                        (
                             f"Check the content of the table "
                             f"{table_info['table_name']} "
                             "and ensure that there is proper data "
                             "in the table. \n "
                             f"Error message: {e}"
                         ),
-                    }
+                    )
                 )
                 continue
             if "index" in df.columns:
@@ -306,12 +296,10 @@ def run_merge_and_qc(table_dict: dict) -> MergeResponse:
         return MergeResponse(
             final_df="",
             errors=[
-                {
-                    "error_name": "Quality Check Failed",
-                    "error_message": (
-                        f"Quality Check Failed. Error message: {str(e)}\n\n"
-                    ),
-                }
+                merge_error(
+                    "Quality Check Failed",
+                    f"Quality Check Failed. Error message: {str(e)}\n\n",
+                )
             ],
             status="failed",
             metadata={},

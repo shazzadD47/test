@@ -244,6 +244,13 @@ def process_layout_chunks(
             "tables_inserted": 0,
         }
 
+    if chunks is None:
+        chunks = []
+
+    embedding_chunks = []
+    figure_details_list = []
+    table_details_list = []
+
     if chunks:
         embedding_chunks = prepare_embedding_chunks(
             chunks, flag_id, project_id, user_id, supplementary_id, split_text=False
@@ -254,7 +261,6 @@ def process_layout_chunks(
         table_chunks = [chunk for chunk in chunks if chunk.get("type") == "table"]
         page_details = get_page_details(file_path, project_id, flag_id)
 
-        figure_details_list = []
         for image_chunk in image_chunks:
             figure_details = prepare_figure_details(
                 flag_id, project_id, page_details, image_chunk
@@ -263,7 +269,6 @@ def process_layout_chunks(
 
         insert_figure_details(figure_details_list)
 
-        table_details_list = []
         for table_chunk in table_chunks:
             table_details = prepare_table_details(
                 flag_id, project_id, page_details, table_chunk
@@ -271,35 +276,38 @@ def process_layout_chunks(
             table_details_list.append(table_details)
 
         insert_table_details(table_details_list)
-        # detect_legends(flag_id, figure_details_list)
 
-        event_payload_data = build_ai_annotation_payload(
-            figure_details_list, table_details_list
-        )
+    event_payload_data = build_ai_annotation_payload(
+        figure_details_list, table_details_list
+    )
 
-        payload = MinerUOutputStatusPayload(
-            flag_id=flag_id,
-            file_id=file_id,
-            supplementary_id=supplementary_id,
-            status="2ND_PASS_COMPLETED",
-            response_type="final",
-            message=None,
-            annotations=event_payload_data,
-        )
-        send_to_backend(BackendEventEnumType.MINERU_OUTPUT_STATUS, payload.model_dump())
+    payload = MinerUOutputStatusPayload(
+        flag_id=flag_id,
+        file_id=file_id,
+        supplementary_id=supplementary_id,
+        status="2ND_PASS_COMPLETED",
+        response_type="final",
+        message=None,
+        annotations=event_payload_data if event_payload_data else [],
+    )
 
-        celery_logger.info(f"Processed layout chunks for flag_id: {flag_id}.")
+    send_to_backend(
+        BackendEventEnumType.MINERU_OUTPUT_STATUS,
+        payload.model_dump(),
+    )
 
-        return {
-            "status": "success",
-            "flag_id": flag_id,
-            "project_id": project_id,
-            "user_id": user_id,
-            "supplementary_id": supplementary_id,
-            "chunks_embedded": len(embedding_chunks),
-            "figures_inserted": len(figure_details_list),
-            "tables_inserted": len(table_details_list),
-        }
+    celery_logger.info(f"Processed layout chunks for flag_id: {flag_id}.")
+
+    return {
+        "status": "success",
+        "flag_id": flag_id,
+        "project_id": project_id,
+        "user_id": user_id,
+        "supplementary_id": supplementary_id,
+        "chunks_embedded": len(embedding_chunks),
+        "figures_inserted": len(figure_details_list),
+        "tables_inserted": len(table_details_list),
+    }
 
 
 @celery_app.task(name="process_layout_chunks_retry")
@@ -312,8 +320,12 @@ def process_layout_chunks_retry(
     file_id: str = None,
     file_extension: str = None,
 ) -> dict | None:
-    try:
 
+    embedding_chunks = []
+    figure_details_list = []
+    table_details_list = []
+
+    try:
         exists = VectorStore.check_flag_id_exists(flag_id)
 
         if not exists:
@@ -328,13 +340,22 @@ def process_layout_chunks_retry(
                 supplementary_id,
                 file_id,
                 file_extension,
-                retry_enabled=False,  # set False here
+                retry_enabled=False,
             )
 
-            embedding_chunks = prepare_embedding_chunks(
-                chunks, flag_id, project_id, user_id, supplementary_id, split_text=False
-            )
-            VectorStore.add_documents(embedding_chunks)
+            chunks = chunks or []
+
+            if chunks:
+                embedding_chunks = prepare_embedding_chunks(
+                    chunks,
+                    flag_id,
+                    project_id,
+                    user_id,
+                    supplementary_id,
+                    split_text=False,
+                )
+                VectorStore.add_documents(embedding_chunks)
+
         else:
             celery_logger.info(f"Vectors for flag_id: {flag_id} already exist.")
 
@@ -349,10 +370,13 @@ def process_layout_chunks_retry(
                 retry_enabled=True,
             )
 
+            chunks = chunks or []
+
     except Exception as e:
         celery_logger.exception(
             f"Layout processing failed for flag_id: {flag_id}. Error: {e}"
         )
+
         upload_file_to_storage(
             file_path,
             upload_path="documents/failures/mineru/layout",
@@ -367,10 +391,12 @@ def process_layout_chunks_retry(
             response_type="failed",
             message=(f"[flag_id: {flag_id}] Layout processing failed."),
         )
+
         send_to_backend(
             BackendEventEnumType.MINERU_OUTPUT_STATUS,
             failed_payload.model_dump(),
         )
+
         return {
             "status": "failed",
             "flag_id": flag_id,
@@ -381,57 +407,66 @@ def process_layout_chunks_retry(
             "figures_inserted": 0,
             "tables_inserted": 0,
         }
+
+    delete_existing_figure_details(flag_id)
+    delete_existing_table_details(flag_id)
+
     if chunks:
         image_chunks = [chunk for chunk in chunks if chunk.get("type") == "image"]
         table_chunks = [chunk for chunk in chunks if chunk.get("type") == "table"]
-        delete_existing_figure_details(flag_id)
-        delete_existing_table_details(flag_id)
+
         page_details = get_page_details(file_path, project_id, flag_id)
 
-        figure_details_list = []
         for image_chunk in image_chunks:
             figure_details = prepare_figure_details(
                 flag_id, project_id, page_details, image_chunk
             )
             figure_details_list.extend(figure_details)
+
         insert_figure_details(figure_details_list)
 
-        table_details_list = []
         for table_chunk in table_chunks:
             table_details = prepare_table_details(
                 flag_id, project_id, page_details, table_chunk
             )
             table_details_list.append(table_details)
+
         insert_table_details(table_details_list)
+
         detect_legends(flag_id, figure_details_list)
 
-        event_payload_data = build_ai_annotation_payload(
-            figure_details_list, table_details_list
-        )
+    event_payload_data = build_ai_annotation_payload(
+        figure_details_list,
+        table_details_list,
+    )
 
-        payload = MinerUOutputStatusPayload(
-            flag_id=flag_id,
-            file_id=file_id,
-            supplementary_id=supplementary_id,
-            status="2ND_PASS_COMPLETED",
-            response_type="final",
-            message=None,
-            annotations=event_payload_data,
-        )
-        send_to_backend(BackendEventEnumType.MINERU_OUTPUT_STATUS, payload.model_dump())
+    payload = MinerUOutputStatusPayload(
+        flag_id=flag_id,
+        file_id=file_id,
+        supplementary_id=supplementary_id,
+        status="2ND_PASS_COMPLETED",
+        response_type="final",
+        message=None,
+        annotations=event_payload_data if event_payload_data else [],
+    )
 
-        celery_logger.info(f"Processed layout chunks for flag_id: {flag_id}.")
+    send_to_backend(
+        BackendEventEnumType.MINERU_OUTPUT_STATUS,
+        payload.model_dump(),
+    )
 
-        return {
-            "status": "success",
-            "flag_id": flag_id,
-            "project_id": project_id,
-            "user_id": user_id,
-            "supplementary_id": supplementary_id,
-            "chunks_embedded": len(embedding_chunks) if not exists else 0,
-            "figures_inserted": len(figure_details_list),
-            "tables_inserted": len(table_details_list),
-        }
+    celery_logger.info(f"Processed layout chunks for flag_id: {flag_id}.")
+
+    return {
+        "status": "success",
+        "flag_id": flag_id,
+        "project_id": project_id,
+        "user_id": user_id,
+        "supplementary_id": supplementary_id,
+        "chunks_embedded": len(embedding_chunks) if not exists else 0,
+        "figures_inserted": len(figure_details_list),
+        "tables_inserted": len(table_details_list),
+    }
 
 
 def parse_document_layout(

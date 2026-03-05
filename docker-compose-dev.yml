@@ -21,12 +21,34 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.dev
-    command: celery -A app.core.celery.app worker -n io-celery@%h -Q delineate-ai-queue,dosing-table,general-extraction --loglevel=INFO -P prefork --concurrency=4 --events
+    command: celery -A app.core.celery.app worker -n io-celery@%h -Q delineate-ai-queue,dosing-table --loglevel=INFO -P gevent --concurrency=8 --events
     volumes:
       - .:/code
       - ~/.cache/ai-app-pip-cache:/root/.cache/pip
     depends_on:
       - redis
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+    environment:
+      PYTHONUNBUFFERED: 1
+
+  general-extraction-celery:
+    container_name: dt-ai-general-extraction-celery
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: celery -A app.core.celery.app worker -n general-extraction@%h -Q general-extraction --loglevel=INFO -P gevent --concurrency=8 --events
+    volumes:
+      - .:/code
+      - ~/.cache/ai-app-pip-cache:/root/.cache/pip
+    depends_on:
+      - redis
+    deploy:
+      resources:
+        limits:
+          memory: 8G
     environment:
       PYTHONUNBUFFERED: 1
 
@@ -35,12 +57,16 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.dev
-    command: celery -A app.core.celery.app worker -n cpu-celery@%h -Q cpu-tasks --loglevel=INFO -P prefork --concurrency=4 --events
+    command: celery -A app.core.celery.app worker -n cpu-celery@%h -Q cpu-tasks --loglevel=INFO -P prefork --concurrency=4 --max-memory-per-child=512000 --events
     volumes:
       - .:/code
       - ~/.cache/ai-app-pip-cache:/root/.cache/pip
     depends_on:
       - redis
+    deploy:
+      resources:
+        limits:
+          memory: 4G
     environment:
       PYTHONUNBUFFERED: 1
 

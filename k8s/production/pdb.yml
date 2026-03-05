@@ -1,13 +1,27 @@
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
+  name: delineate-ai-app-production-pdb
+  namespace: production
+  labels:
+    app: delineate-ai-app-production
+    environment: production
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: delineate-ai-app-production
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
   name: delineate-ai-default-celery-pdb
   namespace: production
   labels:
     app: delineate-ai-default-celery
     environment: production
 spec:
-  minAvailable: 2
+  maxUnavailable: 1
   selector:
     matchLabels:
       app: delineate-ai-default-celery
@@ -21,7 +35,7 @@ metadata:
     app: delineate-ai-cpu-celery
     environment: production
 spec:
-  minAvailable: 2
+  maxUnavailable: 1
   selector:
     matchLabels:
       app: delineate-ai-cpu-celery
@@ -35,7 +49,7 @@ metadata:
     app: delineate-ai-general-extraction-celery
     environment: production
 spec:
-  minAvailable: 2
+  maxUnavailable: 1
   selector:
     matchLabels:
       app: delineate-ai-general-extraction-celery

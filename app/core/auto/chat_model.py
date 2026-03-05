@@ -28,20 +28,28 @@ OPENAI_MODEL_MAPPING = {
 }
 
 ANTHROPIC_MODEL_MAPPING = {
+    "claude-opus-4-6": ChatAnthropic,
+    "claude-sonnet-4-6": ChatAnthropic,
+    "claude-sonnet-4-5": ChatAnthropic,
+    "claude-haiku-4-5": ChatAnthropic,
+    "claude-opus-4-0": ChatAnthropic,
     "claude-sonnet-4-20250514": ChatAnthropic,
+    "claude-sonnet-4-0": ChatAnthropic,
     "claude-3-7-sonnet-latest": ChatAnthropic,
     "claude-3-7-sonnet-20250219": ChatAnthropic,
     "claude-3-5-sonnet-20240620": ChatAnthropic,
     "claude-3-opus-20240229": ChatAnthropic,
     "claude-3-sonnet-20240229": ChatAnthropic,
     "claude-3-haiku-20240307": ChatAnthropic,
-    "claude-sonnet-4-0": ChatAnthropic,
-    "claude-opus-4-0": ChatAnthropic,
-    "claude-sonnet-4-5": ChatAnthropic,
-    "claude-haiku-4-5": ChatAnthropic,
 }
 
 GOOGLE_GENAI_MODEL_MAPPING = {
+    "gemini-3.1-pro": ChatGoogleGenerativeAI,
+    "gemini-3.1-pro-preview": ChatGoogleGenerativeAI,
+    "gemini-3.1-flash": ChatGoogleGenerativeAI,
+    "gemini-3.1-flash-preview": ChatGoogleGenerativeAI,
+    "gemini-3.1-flash-lite": ChatGoogleGenerativeAI,
+    "gemini-3.1-flash-lite-preview": ChatGoogleGenerativeAI,
     "gemini-3-pro-preview": ChatGoogleGenerativeAI,
     "gemini-3-flash-preview": ChatGoogleGenerativeAI,
     "gemini-2.5-flash": ChatGoogleGenerativeAI,

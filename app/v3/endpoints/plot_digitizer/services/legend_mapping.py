@@ -55,7 +55,7 @@ async def extract_labels_individual_images_with_color_added(
     content_list = define_json(image_path, legend_or_markers, names)
     try:
         message = await client.messages.create(
-            model="claude-3-7-sonnet-latest",
+            model="claude-sonnet-4-6",
             max_tokens=1024,
             temperature=0,
             messages=[

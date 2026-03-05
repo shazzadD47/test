@@ -5,6 +5,28 @@ from pydantic import BaseModel, Field
 
 from app.v3.endpoints.merging.constants import TableNames
 
+QCErrorSource = Literal["qc", "merge"]
+
+
+class QCError(BaseModel):
+    error_name: str
+    error_message: str
+    error_source: QCErrorSource = Field(
+        default="merge", description="Source: qc or merge"
+    )
+    qc_name: str | None = Field(
+        default=None, description="Name of the QC check that produced the error"
+    )
+
+
+def merge_error(error_name: str, error_message: str) -> QCError:
+    """Build a QCError for merge-flow errors (source=merge, no qc_name)."""
+    return QCError(
+        error_name=error_name,
+        error_message=error_message,
+        error_source="merge",
+    )
+
 
 class TablesByType(TypedDict, total=False):
     """
@@ -21,14 +43,9 @@ class TablesByType(TypedDict, total=False):
     paper_labels: list[pd.DataFrame]
 
 
-class SingleError(BaseModel):
-    error_name: str
-    error_message: str
-
-
 class MergeResponse(BaseModel):
     final_df: str
-    errors: list[SingleError] | None
+    errors: list[QCError] | None
     status: Literal["success", "failed"]
     metadata: dict | None = None
 
@@ -71,6 +88,24 @@ class MergeRequest(BaseModel):
             "Merge flow version: v0 uses merge+QC, other values use "
             "generalized merge"
         ),
+    )
+
+
+class QualityControlRequest(BaseModel):
+    file_id: str = Field(
+        ..., description="ID of the file whose CSV to run quality checks on"
+    )
+    qc_list: list[str] = Field(..., description="List of QC check names to run")
+    token: str | None = Field(
+        default=None,
+        description="Token to use when fetching CSV from backend (Bearer auth)",
+    )
+
+
+class QualityControlResponse(BaseModel):
+    errors: list[QCError] = Field(
+        default_factory=list,
+        description="List of quality control errors, if any",
     )
 
 

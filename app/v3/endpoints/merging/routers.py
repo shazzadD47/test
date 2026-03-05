@@ -9,13 +9,34 @@ from app.v3.endpoints.merging.pipeline import (
     run_merge_and_qc,
     run_standardization_only,
 )
+from app.v3.endpoints.merging.quality_control import (
+    get_qc_csv_from_backend,
+    run_quality_checks,
+)
 from app.v3.endpoints.merging.schemas import (
     MergeRequest,
     MergeResponse,
+    QualityControlRequest,
+    QualityControlResponse,
     StandardizeSchema,
 )
 
 router = APIRouter(tags=["Merging"])
+
+
+@router.post("/quality-control")
+def quality_control(
+    payload: QualityControlRequest,
+    client: Annotated[S2SSecurityModel, Depends(S2SClient(["merging"]))],
+) -> QualityControlResponse:
+    """
+    Run quality checks on the CSV for the given file_id. CSV is fetched from
+    the main backend via v3/quality-control/{file_id}. Returns a list of QC
+    errors (if any). error_source is "qc"; qc_name identifies the check.
+    """
+    csv = get_qc_csv_from_backend(payload.file_id, token=payload.token)
+    errors = run_quality_checks(csv=csv, qc_list=payload.qc_list)
+    return QualityControlResponse(errors=errors)
 
 
 @router.post("/merge-tables")

@@ -81,3 +81,13 @@ if os.getenv("ENV") == "production":
 
 logging.config.dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger("delineate")
+
+
+class _HealthCheckFilter(logging.Filter):
+    """Filter out /health requests from uvicorn access logs."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "/health" not in record.getMessage()
+
+
+logging.getLogger("uvicorn.access").addFilter(_HealthCheckFilter())

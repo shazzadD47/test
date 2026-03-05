@@ -15,6 +15,7 @@ from app.v3.endpoints.merging.constants import (
 )
 from app.v3.endpoints.merging.group_qc import find_group_name_column
 from app.v3.endpoints.merging.logging import logger
+from app.v3.endpoints.merging.schemas import QCError, merge_error
 from app.v3.endpoints.merging.utils import (
     break_comma_separated_numbers,
     check_if_comma_or_space_separated_numbers,
@@ -184,7 +185,7 @@ def load_observation_data(
 ):
     # region LOAD IN FILES AND OBSERVATION DATA
     # FIX FOR MISALIGNED COLUMNS
-    error_log = []
+    error_log: list[QCError] = []
     try:
         cov_table_name = TableNames.COVARIATE.value
         if cov_table_name in dataframe_dictionary:
@@ -293,18 +294,16 @@ def load_observation_data(
                                     is_valid, _ = validate_var_column_values(value)
                                     if not is_valid:
                                         error_log.append(
-                                            {
-                                                "error_name": (
-                                                    f"Invalid value in column {column}"
-                                                ),
-                                                "error_message": (
+                                            merge_error(
+                                                f"Invalid value in column {column}",
+                                                (
                                                     f"Value '{value}' in column "
                                                     f"{column} contains invalid "
                                                     f"numbers. Each item in a "
                                                     f"comma-separated or range value "
                                                     f"must be a valid number."
                                                 ),
-                                            }
+                                            )
                                         )
                             # Convert to string and mark for table structure update
                             df[column] = df[column].apply(
@@ -354,17 +353,14 @@ def load_observation_data(
                         except Exception as e:
                             logger.error(f"Could not convert {column} to float")
                             error_log.append(
-                                {
-                                    "error_name": (
-                                        f"Error converting column {column} "
-                                        f"to float",
-                                    ),
-                                    "error_message": (
+                                merge_error(
+                                    f"Error converting column {column} to float",
+                                    (
                                         f"Error: {str(e)}.\n"
                                         f"Kindly recheck the observation data "
                                         f"for column {column}."
                                     ),
-                                }
+                                )
                             )
                             logger.info(f"traceback: {traceback.format_exc()}")
                             return None, None, error_log, table_structure_dictionary
@@ -397,12 +393,10 @@ def load_observation_data(
 
     except Exception as e:
         error_log.append(
-            {
-                "error_name": "Error loading observation data",
-                "error_message": (
-                    f"Error: {str(e)}.\n" "Kindly recheck the observation data."
-                ),
-            }
+            merge_error(
+                "Error loading observation data",
+                f"Error: {str(e)}.\nKindly recheck the observation data.",
+            )
         )
         logger.info(f"traceback: {traceback.format_exc()}")
 
@@ -411,7 +405,7 @@ def load_observation_data(
 
 # * Merge Observation Tables
 def merge_observation_data(dataframe_dictionary):
-    error_log = []
+    error_log: list[QCError] = []
     try:
         # * ### Merge Observation Tables
         observation_tables = [
@@ -454,14 +448,14 @@ def merge_observation_data(dataframe_dictionary):
                 except Exception as e:
                     logger.error(f"Error standardizing unit: {e}")
                     error_log.append(
-                        {
-                            "error_name": "Unknown unit found in observation data",
-                            "error_message": (
+                        merge_error(
+                            "Unknown unit found in observation data",
+                            (
                                 f"Error: {e}. "
                                 "Kindly recheck the units in the "
                                 "observation data for the column ARM_TIME_UNIT."
                             ),
-                        }
+                        )
                     )
                     logger.info(f"traceback: {traceback.format_exc()}")
                     return None, error_log
@@ -606,13 +600,11 @@ def merge_observation_data(dataframe_dictionary):
         return observation, error_log
     except Exception as e:
         error_log.append(
-            {
-                "error_name": "Error merging observation data",
-                "error_message": (
-                    f"Error: {str(e)}.\n"
-                    "Kindly recheck the observation data and rerun the merge."
-                ),
-            }
+            merge_error(
+                "Error merging observation data",
+                f"Error: {str(e)}.\n"
+                "Kindly recheck the observation data and rerun the merge.",
+            )
         )
         logger.info(f"traceback: {traceback.format_exc()}")
         return None, error_log
@@ -620,7 +612,7 @@ def merge_observation_data(dataframe_dictionary):
 
 # * Preprocess combined observation table
 def observation_table_preprocessing(observation):
-    error_log = []
+    error_log: list[QCError] = []
     try:
         # region PREPARING OBSERVATION
 
@@ -728,13 +720,11 @@ def observation_table_preprocessing(observation):
         return observation, error_log
     except Exception as e:
         error_log.append(
-            {
-                "error_name": "Error preprocessing observation data",
-                "error_message": (
-                    f"Error: {str(e)}.\n"
-                    "Kindly recheck the observation data and rerun the merge."
-                ),
-            }
+            merge_error(
+                "Error preprocessing observation data",
+                f"Error: {str(e)}.\n"
+                "Kindly recheck the observation data and rerun the merge.",
+            )
         )
         logger.info(f"traceback: {traceback.format_exc()}")
         return None, error_log
@@ -742,7 +732,7 @@ def observation_table_preprocessing(observation):
 
 # * Dosing Table Preperation
 def dosing_table_preprocessing(dose):
-    error_log = []
+    error_log: list[QCError] = []
     try:
         # *  Essential Changes Required in the Dose columns
         # region
@@ -829,13 +819,11 @@ def dosing_table_preprocessing(dose):
         return dose, error_log
     except Exception as e:
         error_log.append(
-            {
-                "error_name": "Error preprocessing dosing table",
-                "error_message": (
-                    f"Error: {str(e)}.\n"
-                    "Kindly recheck the dosing data and rerun the merge."
-                ),
-            }
+            merge_error(
+                "Error preprocessing dosing table",
+                f"Error: {str(e)}.\n"
+                "Kindly recheck the dosing data and rerun the merge.",
+            )
         )
         logger.info(f"traceback: {traceback.format_exc()}")
         return None, error_log
@@ -843,7 +831,7 @@ def dosing_table_preprocessing(dose):
 
 # * Combine observation and dosing
 def combine_observation_and_dosing(observation, dose):
-    error_log = []
+    error_log: list[QCError] = []
     try:
         # region COMBINE OBSERVATION AND DOSING
         obs_group_column = find_group_name_column(observation)
@@ -956,14 +944,14 @@ def combine_observation_and_dosing(observation, dose):
         return comb, error_log
     except Exception as e:
         error_log.append(
-            {
-                "error_name": "Error combining observation and dosing",
-                "error_message": (
+            merge_error(
+                "Error combining observation and dosing",
+                (
                     f"Error: {str(e)}.\n"
                     "Kindly recheck the observation and "
                     "dosing data and rerun the merge."
                 ),
-            }
+            )
         )
         logger.info(f"traceback: {traceback.format_exc()}")
         return None, error_log
@@ -971,7 +959,7 @@ def combine_observation_and_dosing(observation, dose):
 
 # * Standardize all units
 def unit_standardization(comb):
-    error_log = []
+    error_log: list[QCError] = []
     try:
         # region Unit Standardization
 
@@ -1004,14 +992,14 @@ def unit_standardization(comb):
             except Exception as e:
                 logger.error(f"Error standardizing unit: {e}")
                 error_log.append(
-                    {
-                        "error_name": "Unknown unit found in combined data",
-                        "error_message": (
+                    merge_error(
+                        "Unknown unit found in combined data",
+                        (
                             f"Error: {e}. "
                             "Kindly recheck the units in the "
                             "combined data for the column ARM_TIME_UNIT."
                         ),
-                    }
+                    )
                 )
                 logger.info(f"traceback: {traceback.format_exc()}")
                 return None, error_log
@@ -1030,14 +1018,14 @@ def unit_standardization(comb):
             except Exception as e:
                 logger.error(f"Error standardizing unit: {e}")
                 error_log.append(
-                    {
-                        "error_name": "Unknown unit found in combined data",
-                        "error_message": (
+                    merge_error(
+                        "Unknown unit found in combined data",
+                        (
                             f"Error: {e}. "
                             "Kindly recheck the units in the "
                             "combined data for the column II_UNIT."
                         ),
-                    }
+                    )
                 )
                 logger.info(f"traceback: {traceback.format_exc()}")
                 return None, error_log
@@ -1179,12 +1167,10 @@ def unit_standardization(comb):
         return comb, error_log
     except Exception as e:
         error_log.append(
-            {
-                "error_name": "Error standardizing units",
-                "error_message": (
-                    f"Error: {str(e)}.\n" "Kindly recheck the data and rerun the merge."
-                ),
-            }
+            merge_error(
+                "Error standardizing units",
+                f"Error: {str(e)}.\nKindly recheck the data and rerun the merge.",
+            )
         )
         logger.info(f"traceback: {traceback.format_exc()}")
         return None, error_log
@@ -1192,7 +1178,7 @@ def unit_standardization(comb):
 
 # * Temporary Column Creation
 def temp_col_creation(comb):
-    error_log = []
+    error_log: list[QCError] = []
     try:
         # region TEMPORARY COLUMNS
 
@@ -1508,12 +1494,10 @@ def temp_col_creation(comb):
         return comb, error_log
     except Exception as e:
         error_log.append(
-            {
-                "error_name": "Error creating temporary columns",
-                "error_message": (
-                    f"Error: {str(e)}.\n" "Kindly recheck the data and rerun the merge."
-                ),
-            }
+            merge_error(
+                "Error creating temporary columns",
+                f"Error: {str(e)}.\nKindly recheck the data and rerun the merge.",
+            )
         )
         logger.info(f"traceback: {traceback.format_exc()}")
         return None, error_log
@@ -1521,7 +1505,7 @@ def temp_col_creation(comb):
 
 # * Reordering dataframe columns
 def reorder_dataframe_columns(comb):
-    error_log = []
+    error_log: list[QCError] = []
     try:
         # region REORDERING DATAFRAME COLUMNS
         comb_group_column = find_group_name_column(comb)
@@ -1628,19 +1612,14 @@ def reorder_dataframe_columns(comb):
 
         return comb, error_log
     except Exception as e:
-        error_log.append(
-            {
-                "error_name": "Error reordering dataframe columns",
-                "error_message": str(e),
-            }
-        )
+        error_log.append(merge_error("Error reordering dataframe columns", str(e)))
         logger.info(f"traceback: {traceback.format_exc()}")
         return None, error_log
 
 
 # * Dosing Rows QC
 def dosing_rows_qc(comb):
-    error_log = []
+    error_log: list[QCError] = []
     try:
         # ## **QC for Dosing Rows**
 
@@ -1704,12 +1683,10 @@ def dosing_rows_qc(comb):
         return comb, error_log
     except Exception as e:
         error_log.append(
-            {
-                "error_name": "Error performing dosing rows QC",
-                "error_message": (
-                    f"Error: {str(e)}.\n" "Kindly recheck the data and rerun the merge."
-                ),
-            }
+            merge_error(
+                "Error performing dosing rows QC",
+                f"Error: {str(e)}.\nKindly recheck the data and rerun the merge.",
+            )
         )
         logger.info(f"traceback: {traceback.format_exc()}")
         return None, error_log
@@ -1717,7 +1694,7 @@ def dosing_rows_qc(comb):
 
 # * Merge covariates to combined dosing and observation
 def covariate_merge(dataframe_dictionary, comb, cov_table_structure: list[dict]):
-    error_log = []
+    error_log: list[QCError] = []
     try:
         # region COVARIATE MERGING
         # ## **Covariate merging** Step 3
@@ -1817,12 +1794,10 @@ def covariate_merge(dataframe_dictionary, comb, cov_table_structure: list[dict])
         return final, error_log
     except Exception as e:
         error_log.append(
-            {
-                "error_name": "Error merging covariates",
-                "error_message": (
-                    f"Error: {str(e)}.\n" "Kindly recheck the data and rerun the merge."
-                ),
-            }
+            merge_error(
+                "Error merging covariates",
+                f"Error: {str(e)}.\nKindly recheck the data and rerun the merge.",
+            )
         )
         logger.info(f"traceback: {traceback.format_exc()}")
         return None, error_log
@@ -1830,7 +1805,7 @@ def covariate_merge(dataframe_dictionary, comb, cov_table_structure: list[dict])
 
 # * Final Formatting
 def final_formatting(final):
-    error_log = []
+    error_log: list[QCError] = []
     try:
         # ### Final Formatting before export
         final_group_column = find_group_name_column(final)
@@ -1889,13 +1864,10 @@ def final_formatting(final):
                 final["SOURCE"] = final["SOURCE"].apply(format_figure_reference)
             except Exception as e:
                 error_log.append(
-                    {
-                        "error_name": "Original Figure reference is null",
-                        "error_message": (
-                            "Kindly recheck the data and rerun the merge. "
-                            f"Error: {e}."
-                        ),
-                    }
+                    merge_error(
+                        "Original Figure reference is null",
+                        f"Kindly recheck the data and rerun the merge. Error: {e}.",
+                    )
                 )
 
         # Replaces any instance of STD as a whole word to SD
@@ -1931,13 +1903,11 @@ def final_formatting(final):
             and final.loc[dv_var_stat_mask, "DV_UCI"].isnull().any()
         ):
             error_log.append(
-                {
-                    "error_name": (
-                        "Wrong error bar option selected, "
-                        "confidence interval columns blank"
-                    ),
-                    "error_message": "Kindly recheck the data and rerun the merge.",
-                }
+                merge_error(
+                    "Wrong error bar option selected, "
+                    "confidence interval columns blank",
+                    "Kindly recheck the data and rerun the merge.",
+                )
             )
 
         # else assume standard deviation (set DV_LCI and DV_UCI to NaN)
@@ -1965,12 +1935,10 @@ def final_formatting(final):
             condition = dv_var_stat_vals.notna().values & dv_var_vals.isna().values
             if condition.any():
                 error_log.append(
-                    {
-                        "error_name": (
-                            "Wrong error bar option selected, DV_VAR column is blank"
-                        ),
-                        "error_message": "Kindly recheck the data and rerun the merge.",
-                    }
+                    merge_error(
+                        "Wrong error bar option selected, DV_VAR column is blank",
+                        "Kindly recheck the data and rerun the merge.",
+                    )
                 )
 
         # HOTFIX If DVID does not equal 2 then round to nearest whole number ,
@@ -2211,12 +2179,10 @@ def final_formatting(final):
         return final, error_log
     except Exception as e:
         error_log.append(
-            {
-                "error_name": "Error when final formatting the merged data",
-                "error_message": (
-                    f"Error: {str(e)}.\n" "Kindly recheck all data and rerun the merge."
-                ),
-            }
+            merge_error(
+                "Error when final formatting the merged data",
+                f"Error: {str(e)}.\nKindly recheck all data and rerun the merge.",
+            )
         )
         logger.info(f"traceback: {traceback.format_exc()}")
         return None, error_log
@@ -2227,7 +2193,7 @@ def apply_final_column_order(final):
     Apply the final column ordering to the merged dataframe.
     This should be called at the very end of the merge pipeline.
     """
-    error_log = []
+    error_log: list[QCError] = []
     try:
         final_column_order = [
             "FILE_NAME",
@@ -2318,19 +2284,17 @@ def apply_final_column_order(final):
         return final, error_log
     except Exception as e:
         error_log.append(
-            {
-                "error_name": "Error applying final column order",
-                "error_message": (
-                    f"Error: {str(e)}.\n" "Kindly recheck all data and rerun the merge."
-                ),
-            }
+            merge_error(
+                "Error applying final column order",
+                f"Error: {str(e)}.\nKindly recheck all data and rerun the merge.",
+            )
         )
         logger.info(f"traceback: {traceback.format_exc()}")
         return None, error_log
 
 
 def add_non_group_dataframes(final, non_group_dataframe):
-    error_log = []
+    error_log: list[QCError] = []
     try:
         cols_to_keep = [
             col for col in non_group_dataframe.columns if col not in final.columns
@@ -2355,10 +2319,10 @@ def add_non_group_dataframes(final, non_group_dataframe):
             )
         else:
             error_log.append(
-                {
-                    "error_name": "FILE_NAME column not found in data",
-                    "error_message": "Kindly add the FILE_NAME column to the data.",
-                }
+                merge_error(
+                    "FILE_NAME column not found in data",
+                    "Kindly add the FILE_NAME column to the data.",
+                )
             )
             logger.info(f"traceback: {traceback.format_exc()}")
             return None, error_log
@@ -2401,13 +2365,10 @@ def add_non_group_dataframes(final, non_group_dataframe):
         return final, error_log
     except Exception as e:
         error_log.append(
-            {
-                "error_name": "Error adding data that has no group column.",
-                "error_message": (
-                    f"Error: {str(e)}.\n"
-                    "Kindly recheck those data and rerun the merge."
-                ),
-            }
+            merge_error(
+                "Error adding data that has no group column.",
+                f"Error: {str(e)}.\nKindly recheck those data and rerun the merge.",
+            )
         )
         logger.info(f"traceback: {traceback.format_exc()}")
         return None, error_log
@@ -2436,7 +2397,7 @@ def run_whole_merge(tables_df, table_structure_dictionary):
     6. Performs QC checks and merges covariate data
     7. Applies final formatting
     """
-    error_log = []
+    error_log: list[QCError] = []
     # Load and separate observation data
     (
         dataframe_dictionary,

@@ -534,3 +534,20 @@ def retry_get_title_summary(
         "message": "File processing task has been retried successfully.",
         "flag_id": flag_id,
     }
+
+
+@router.get(
+    "/get-title-summary/debug/backend-events/{file_id}",
+    status_code=status.HTTP_200_OK,
+)
+def get_backend_events_for_file(
+    file_id: str,
+    _client: Annotated[S2SSecurityModel, Depends(S2SClient(["get-title-summary"]))],
+) -> list[dict]:
+    import json
+
+    from app.redis import redis_client
+
+    key = f"backend_events:{file_id}"
+    raw_events = redis_client.lrange(key, 0, -1)
+    return [json.loads(event) for event in raw_events]

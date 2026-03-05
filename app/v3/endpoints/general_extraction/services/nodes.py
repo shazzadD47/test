@@ -173,9 +173,8 @@ def label_context_generator_node(
 
     start_time = time.time()
     logger.info("Generating contexts for labels in label_context_generator_node")
-    inputs = deepcopy(state["workflow_input"])
-    inputs["table_structure"] = deepcopy(state["table_structure"])
     table_structure = deepcopy(state["table_structure"])
+    inputs = {**state["workflow_input"], "table_structure": table_structure}
     table_structure_name_hash = {label["name"]: label for label in table_structure}
     has_dependent_labels = False
     for label in table_structure:
@@ -210,7 +209,7 @@ def label_context_generator_node(
                 root_label_data = table_structure_name_hash[root_label]
                 root_label_answer = "\n".join(
                     [
-                        f"{i+1}. {answer}"
+                        f"{i + 1}. {answer}"
                         for i, answer in enumerate(root_label_data["answers"])
                     ]
                 )
@@ -287,8 +286,8 @@ def table_finalization_node(
     the summarized answers for each field and generate the final table.
     """
     logger.info("Finalizing table in table_finalization_node")
-    inputs = deepcopy(state["workflow_input"])
     table_structure = deepcopy(state["table_structure"])
+    inputs = {**state["workflow_input"]}
     final_table, final_table_with_citations = create_final_table(
         table_structure=table_structure,
         has_roots=inputs["has_root_labels"],

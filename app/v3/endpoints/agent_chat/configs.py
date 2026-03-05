@@ -9,11 +9,11 @@ load_dotenv()
 class Config(BaseSettings):
     DB_URL: str
 
-    CODE_LLM: str = "claude-3-5-sonnet-20240620"
+    CODE_LLM: str = "claude-sonnet-4-6"
     CHAT_LLM: str = "gpt-4.1"
     CHAT_GEMINI_MODEL: str = "gemini-2.5-flash"
     DEEP_CHAT_FALLBACK_LLM: str = "gpt-4.1"
-    REASONING_LLM: str = "claude-3-7-sonnet-20250219"
+    REASONING_LLM: str = "claude-sonnet-4-6"
 
     class Config:
         env_prefix = "AGENT_CHAT_"

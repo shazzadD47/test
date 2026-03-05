@@ -1,9 +1,8 @@
 import pandas as pd
 
-from app.v3.endpoints.merging.constants import (
-    TableNames,
-)
+from app.v3.endpoints.merging.constants import TableNames
 from app.v3.endpoints.merging.logging import logger
+from app.v3.endpoints.merging.schemas import QCError, merge_error
 from app.v3.endpoints.merging.utils import check_if_null
 
 logger = logger.getChild("group_qc")
@@ -53,7 +52,7 @@ def fix_group_names(
 
 def run_group_qc(
     dataframe_dictionary: dict[str, pd.DataFrame],
-) -> dict[str, pd.DataFrame]:
+) -> tuple[dict[str, pd.DataFrame], list[QCError]]:
     dataframe_dictionary = fix_group_names(dataframe_dictionary)
 
     # if group names for covariate and Dosing
@@ -89,60 +88,63 @@ def run_group_qc(
         if group_name_column != "GROUP":
             dosing_df.rename(columns={group_name_column: "GROUP"}, inplace=True)
         dosing_group_names = list(dosing_df["GROUP"].unique())
-    error_log = []
+    error_log: list[QCError] = []
 
     if (
         len(observation_group_names) > 0
         and len(covariate_group_names) > 0
         and len(set(observation_group_names) - set(covariate_group_names)) > 0
     ):
-        error_message = {
-            "error_name": "Covariate group names!=Observation group names.",
-            "error_message": (
-                f"Observation group names: {observation_group_names}\n"
-                f"Covariate group names: {covariate_group_names}\n"
-                f"Difference between observation and covariate group names: "
-                f"{set(observation_group_names) - set(covariate_group_names)}\n"
-                "Ensure all group names same across Observation,Covariate and Dosing.\n"
-                "and then rerun the QC."
-            ),
-        }
-        error_log.append(error_message)
+        error_log.append(
+            merge_error(
+                "Covariate group names!=Observation group names.",
+                (
+                    f"Observation group names: {observation_group_names}\n"
+                    f"Covariate group names: {covariate_group_names}\n"
+                    f"Difference between observation and covariate group names: "
+                    f"{set(observation_group_names) - set(covariate_group_names)}\n"
+                    "Ensure all group names same across Observation, "
+                    "Covariate and Dosing.\nand then rerun the QC."
+                ),
+            )
+        )
 
     if (
         len(observation_group_names) > 0
         and len(dosing_group_names) > 0
         and len(set(observation_group_names) - set(dosing_group_names)) > 0
     ):
-        error_message = {
-            "error_name": "Dosing group names!=Observation group names.",
-            "error_message": (
-                f"Observation group names: {observation_group_names}\n"
-                f"Dosing group names: {dosing_group_names}\n"
-                f"Difference between observation and dosing group names: "
-                f"{set(observation_group_names) - set(dosing_group_names)}\n"
-                "Ensure all group names same across Observation,Covariate and Dosing.\n"
-                "and then rerun the QC."
-            ),
-        }
-        error_log.append(error_message)
+        error_log.append(
+            merge_error(
+                "Dosing group names!=Observation group names.",
+                (
+                    f"Observation group names: {observation_group_names}\n"
+                    f"Dosing group names: {dosing_group_names}\n"
+                    f"Difference between observation and dosing group names: "
+                    f"{set(observation_group_names) - set(dosing_group_names)}\n"
+                    "Ensure all group names same across Observation, "
+                    "Covariate and Dosing.\nand then rerun the QC."
+                ),
+            )
+        )
 
     if (
         len(observation_group_names) > 0
         and len(adverse_event_group_names) > 0
         and len(set(observation_group_names) - set(adverse_event_group_names)) > 0
     ):
-        error_message = {
-            "error_name": "Adverse event group names!=Observation group names.",
-            "error_message": (
-                f"Observation group names: {observation_group_names}\n"
-                f"Adverse event group names: {adverse_event_group_names}\n"
-                f"Difference between observation and adverse event group names: "
-                f"{set(observation_group_names) - set(adverse_event_group_names)}\n"
-                "Ensure all group names same across Observation,Covariate and Dosing.\n"
-                "and then rerun the QC."
-            ),
-        }
-        error_log.append(error_message)
+        error_log.append(
+            merge_error(
+                "Adverse event group names!=Observation group names.",
+                (
+                    f"Observation group names: {observation_group_names}\n"
+                    f"Adverse event group names: {adverse_event_group_names}\n"
+                    f"Difference between observation and adverse event group names: "
+                    f"{set(observation_group_names) - set(adverse_event_group_names)}\n"
+                    "Ensure all group names same across Observation, "
+                    "Covariate and Dosing.\nand then rerun the QC."
+                ),
+            )
+        )
 
     return dataframe_dictionary, error_log

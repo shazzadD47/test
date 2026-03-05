@@ -316,6 +316,7 @@ def _extract_legends_from_plot(
         extracted_legends,
         legend_found,
         legend_found_from_legends_patch,
+        found_legend_in_original_image,
         paths,
         image,
     ) = extract_legends_from_figure(
@@ -330,7 +331,7 @@ def _extract_legends_from_plot(
         langfuse_session_id=langfuse_session_id,
     )
 
-    if legend_found_from_legends_patch:
+    if legend_found_from_legends_patch and not found_legend_in_original_image:
         upload_path = f"plot-autofill-temp-bucket-{uuid4()}"
         upload_files_with_retries(
             paths["image_with_legends_path"],

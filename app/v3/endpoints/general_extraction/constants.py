@@ -29,7 +29,27 @@ def initialize_llm(model_name: str):
     )
 
 
-analyzer_llm = initialize_llm(ge_settings.ANALYZER_LLM)
-query_generator_llm = initialize_llm(ge_settings.QUERY_GENERATOR_LLM)
+class _LazyLLM:
+    """Defers LLM creation until first attribute access.
+    Avoids allocating heavy model clients at import time in forked workers."""
+
+    def __init__(self, model_name: str):
+        self._model_name = model_name
+        self._instance = None
+
+    def _ensure(self):
+        if self._instance is None:
+            self._instance = initialize_llm(self._model_name)
+        return self._instance
+
+    def __getattr__(self, name):
+        return getattr(self._ensure(), name)
+
+    def with_structured_output(self, *args, **kwargs):
+        return self._ensure().with_structured_output(*args, **kwargs)
+
+
+analyzer_llm = _LazyLLM(ge_settings.ANALYZER_LLM)
+query_generator_llm = _LazyLLM(ge_settings.QUERY_GENERATOR_LLM)
 
 run_name = "general_extraction"

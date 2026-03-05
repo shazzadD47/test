@@ -1,3 +1,5 @@
+import json
+from datetime import datetime, timezone
 from enum import Enum
 
 from celery.utils.log import get_task_logger
@@ -6,6 +8,14 @@ from app.core.event_bus.producer_mq import ProducerMQ
 from app.logging import logger
 
 celery_logger = get_task_logger("delineate.event_bus")
+
+BACKEND_EVENT_LOG_TTL = 12 * 60 * 60  # 12 hours
+
+_LOGGED_EVENT_TYPES = {
+    "MINERU_OUTPUT_STATUS",
+    "CONVERT_PDF_TO_IMAGE",
+    "PDF_SUMMARIZATION",
+}
 
 
 class BackendEventEnumType(Enum):
@@ -66,3 +76,35 @@ def send_to_backend(
     except Exception as e:
         logger.exception(e)
         celery_logger.exception(e)
+
+    if event.name in _LOGGED_EVENT_TYPES:
+        _log_backend_event(event, message)
+
+
+def _log_backend_event(event: BackendEventEnumType, message: dict) -> None:
+    """Log backend event to Redis keyed by file_id for debugging event ordering."""
+    file_id = message.get("file_id")
+    if not file_id:
+        return
+
+    try:
+        from app.redis import redis_client
+
+        annotations = message.get("annotations")
+        log_entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "event_type": event.value,
+            "flag_id": message.get("flag_id"),
+            "status": message.get("status"),
+            "response_type": message.get("response_type"),
+            "has_annotations": annotations is not None,
+            "annotations_count": len(annotations) if annotations else 0,
+            "supplementary_id": message.get("supplementary_id"),
+            "message": message.get("message"),
+        }
+
+        key = f"backend_events:{file_id}"
+        redis_client.rpush(key, json.dumps(log_entry))
+        redis_client.expire(key, BACKEND_EVENT_LOG_TTL)
+    except Exception as e:
+        logger.warning(f"Failed to log backend event to Redis: {e}")

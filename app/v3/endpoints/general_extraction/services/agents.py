@@ -56,18 +56,30 @@ def label_query_generator_agent(
     return chain
 
 
+_context_llm_cache: dict[str, object] = {}
+
+
+def _get_or_create_context_llm(model_name: str):
+    """
+    Return a cached base LLM instance for context generation.
+    """
+    if model_name not in _context_llm_cache:
+        if model_name.startswith("gemini"):
+            _context_llm_cache[model_name] = AutoChatModel.from_model_name(
+                model_name=model_name, thinking_level="low"
+            )
+        else:
+            _context_llm_cache[model_name] = AutoChatModel.from_model_name(
+                model_name=model_name,
+            )
+    return _context_llm_cache[model_name]
+
+
 def label_context_generator_agent(
     model_name: str,
     schema: BaseModel = None,
 ):
-    if model_name.startswith("gemini"):
-        context_generator_llm = AutoChatModel.from_model_name(
-            model_name=model_name, thinking_level="low"
-        )
-    else:
-        context_generator_llm = AutoChatModel.from_model_name(
-            model_name=model_name,
-        )
+    context_generator_llm = _get_or_create_context_llm(model_name)
 
     if schema:
         context_generator_llm = context_generator_llm.with_structured_output(

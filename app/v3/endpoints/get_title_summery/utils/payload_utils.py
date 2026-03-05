@@ -1,8 +1,21 @@
+import re
+
 from app.core.database.models import FigureDetails, TableDetails
 from app.utils.texts import convert_data_to_string
 from app.v3.endpoints.get_title_summery.schemas import AnnotationItem
 from app.v3.endpoints.get_title_summery.utils.s3_utils import build_public_s3_url
 from app.v3.endpoints.projects.constants import AutoConnection
+
+
+def extract_chart_type(summary: str) -> str | None:
+    if not summary:
+        return None
+
+    match = re.search(r"Chart Type:\s*([A-Za-z0-9_\- ]+)", summary, re.IGNORECASE)
+    if match:
+        return match.group(1).strip().lower()
+
+    return None
 
 
 def fix_paper_metadata_response(response: dict) -> dict:
@@ -65,6 +78,7 @@ def build_ai_annotation_payload(
                         fig.legend_paths or [],
                     )
                 ],
+                "chartType": extract_chart_type(fig.summary),
             }
         )
 

@@ -90,8 +90,54 @@ def auto_figure_suggestion_task(
                 if user_input_type == AISelectionInputTypes.IMAGE
                 else [user_input_type]
             )
+            if user_input_original_type.lower() == AISelectionInputTypes.CHART:
+                total_count = len(all_data)
+
+                other_count_before = sum(
+                    1
+                    for fig in all_data
+                    if fig.get("chartType")
+                    and fig["chartType"].lower() in ("other", "others")
+                )
+                filtered_all_data = [
+                    fig
+                    for fig in all_data
+                    if fig.get("chartType")
+                    and fig["chartType"].lower() not in ("other", "others")
+                ]
+                filtered_count = len(filtered_all_data)
+                other_count_after = sum(
+                    1
+                    for fig in filtered_all_data
+                    if fig.get("chartType")
+                    and fig["chartType"].lower() in ("other", "others")
+                )
+                celery_logger.info(
+                    f"[AutoFigure] InputType={user_input_original_type} | "
+                    f"Total={total_count}, OtherBefore={other_count_before}, "
+                    f"AfterFilter={filtered_count}, OtherAfter={other_count_after}"
+                )
+
+                # Optional: log IDs of removed charts (first 5 only)
+                removed_ids = [
+                    fig["id"]
+                    for fig in all_data
+                    if fig.get("chartType")
+                    and fig["chartType"].lower() in ("other", "others")
+                ]
+                celery_logger.debug(
+                    f"[AutoFigure] Removed 'other' IDs (up to 5): {removed_ids[:5]}"
+                )
+
+            else:
+                filtered_all_data = all_data
+                celery_logger.info(
+                    f"[AutoFigure] InputType={user_input_original_type} | "
+                    f"Total={len(all_data)}, Others allowed, No filtering applied"
+                )
 
             # Get input data
+
             user_requirement: str = user_data["description"]
             keyword_extraction_prompt: str = KEYWORD_EXTRACTION_PROMPT
             input_id: str = user_data["id"]
@@ -104,7 +150,7 @@ def auto_figure_suggestion_task(
             celery_logger.info("Keyword generation completed")
 
             ai_suggestion_generator = AIAutoSuggestionGenerator(
-                all_data=all_data,
+                all_data=filtered_all_data,
                 keywords_extraction_info=keyword_generator.keywords_extraction_info,
                 user_requirement=user_requirement,
                 selection_type=input_type,

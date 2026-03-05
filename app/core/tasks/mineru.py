@@ -29,20 +29,7 @@ def log_mineru_output(
                 response=response,
             )
         )
-        if response_type == "initial":
-            event_payload = MinerUOutputStatusPayload(
-                flag_id=flag_id,
-                file_id=file_id,
-                supplementary_id=supplementary_id,
-                status="1ST_PASS_COMPLETED",
-                response_type=response_type,
-                message="Initial processing completed successfully.",
-            )
-            send_to_backend(
-                BackendEventEnumType.MINERU_OUTPUT_STATUS,
-                event_payload.model_dump(),
-            )
-        elif response_type == "final":
+        if response_type == "final":
             event_payload = MinerUOutputStatusPayload(
                 flag_id=flag_id,
                 file_id=file_id,

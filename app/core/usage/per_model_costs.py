@@ -176,6 +176,82 @@ OPENAI_MODEL_MAPPING = {
 
 
 ANTHROPIC_MODEL_MAPPING = {
+    "claude-opus-4-6": ModelCostDetails(
+        input_cost_details={
+            "text": 5 / MILLION,
+            "text_high": 10 / MILLION,
+            "high_limit": 200000,
+        },
+        output_cost_details={
+            "text": 25 / MILLION,
+            "text_high": 37.50 / MILLION,
+            "high_limit": 200000,
+        },
+        cache_read_cost_details={
+            "text": 0.5 / MILLION,
+            "text_high": 1 / MILLION,
+            "high_limit": 200000,
+        },
+        cache_write_cost_details={
+            "text": 6.25 / MILLION,
+            "text_high": 12.50 / MILLION,
+            "high_limit": 200000,
+        },
+    ),
+    "claude-opus-4-5": ModelCostDetails(
+        input_cost_details={
+            "text": 5 / MILLION,
+        },
+        output_cost_details={
+            "text": 25 / MILLION,
+        },
+        cache_read_cost_details={
+            "text": 0.5 / MILLION,
+        },
+        cache_write_cost_details={
+            "text": 6.25 / MILLION,
+            "cache_5m": 6.25 / MILLION,
+            "cache_1h": 10 / MILLION,
+        },
+    ),
+    "claude-opus-4-1": ModelCostDetails(
+        input_cost_details={
+            "text": 15 / MILLION,
+        },
+        output_cost_details={
+            "text": 75 / MILLION,
+        },
+        cache_read_cost_details={
+            "text": 1.5 / MILLION,
+        },
+        cache_write_cost_details={
+            "text": 18.75 / MILLION,
+            "cache_5m": 18.75 / MILLION,
+            "cache_1h": 30 / MILLION,
+        },
+    ),
+    "claude-sonnet-4-6": ModelCostDetails(
+        input_cost_details={
+            "text": 3 / MILLION,
+            "text_high": 6 / MILLION,
+            "high_limit": 200000,
+        },
+        output_cost_details={
+            "text": 15 / MILLION,
+            "text_high": 22.50 / MILLION,
+            "high_limit": 200000,
+        },
+        cache_read_cost_details={
+            "text": 0.3 / MILLION,
+            "text_high": 0.6 / MILLION,
+            "high_limit": 200000,
+        },
+        cache_write_cost_details={
+            "text": 3.75 / MILLION,
+            "text_high": 7.50 / MILLION,
+            "high_limit": 200000,
+        },
+    ),
     "claude-sonnet-4-5": ModelCostDetails(
         input_cost_details={
             "text": 3 / MILLION,
@@ -210,6 +286,24 @@ ANTHROPIC_MODEL_MAPPING = {
         },
         cache_write_cost_details={
             "text": 1.25 / MILLION,
+            "cache_5m": 1.25 / MILLION,
+            "cache_1h": 2 / MILLION,
+        },
+    ),
+    "claude-haiku-3-5": ModelCostDetails(
+        input_cost_details={
+            "text": 0.80 / MILLION,
+        },
+        output_cost_details={
+            "text": 4 / MILLION,
+        },
+        cache_read_cost_details={
+            "text": 0.08 / MILLION,
+        },
+        cache_write_cost_details={
+            "text": 1 / MILLION,
+            "cache_5m": 1 / MILLION,
+            "cache_1h": 1.6 / MILLION,
         },
     ),
     "claude-sonnet-4-0": ModelCostDetails(
@@ -359,7 +453,7 @@ ANTHROPIC_MODEL_MAPPING = {
 }
 
 GOOGLE_GENAI_MODEL_MAPPING = {
-    "gemini-3-pro-preview": ModelCostDetails(
+    "gemini-3.1-pro-preview": ModelCostDetails(
         input_cost_details={
             "text": 2 / MILLION,
             "image": 2 / MILLION,
@@ -382,7 +476,48 @@ GOOGLE_GENAI_MODEL_MAPPING = {
             "audio_high": 18 / MILLION,
             "high_limit": 200000,
         },
-        reasoning_cost_details={
+        cache_read_cost_details={
+            "text": 0.2 / MILLION,
+            "image": 0.2 / MILLION,
+            "video": 0.2 / MILLION,
+            "audio": 0.2 / MILLION,
+            "text_high": 0.4 / MILLION,
+            "image_high": 0.4 / MILLION,
+            "video_high": 0.4 / MILLION,
+            "audio_high": 0.4 / MILLION,
+            "high_limit": 200000,
+        },
+    ),
+    "gemini-3.1-flash-lite-preview": ModelCostDetails(
+        input_cost_details={
+            "text": 0.25 / MILLION,
+            "image": 0.25 / MILLION,
+            "video": 0.25 / MILLION,
+            "audio": 0.50 / MILLION,
+        },
+        output_cost_details={
+            "text": 1.5 / MILLION,
+        },
+        cache_read_cost_details={
+            "text": 0.025 / MILLION,
+            "image": 0.025 / MILLION,
+            "video": 0.025 / MILLION,
+            "audio": 0.05 / MILLION,
+        },
+    ),
+    "gemini-3-pro-preview": ModelCostDetails(
+        input_cost_details={
+            "text": 2 / MILLION,
+            "image": 2 / MILLION,
+            "video": 2 / MILLION,
+            "audio": 2 / MILLION,
+            "text_high": 4 / MILLION,
+            "image_high": 4 / MILLION,
+            "video_high": 4 / MILLION,
+            "audio_high": 4 / MILLION,
+            "high_limit": 200000,
+        },
+        output_cost_details={
             "text": 12 / MILLION,
             "image": 12 / MILLION,
             "video": 12 / MILLION,
@@ -408,32 +543,32 @@ GOOGLE_GENAI_MODEL_MAPPING = {
     "gemini-3-flash-preview": ModelCostDetails(
         input_cost_details={
             "text": 0.5 / MILLION,
+            "image": 0.5 / MILLION,
+            "video": 0.5 / MILLION,
+            "audio": 1 / MILLION,
         },
         output_cost_details={
             "text": 3 / MILLION,
         },
-        cache_read_cost_details={
-            "text": 0.05 / MILLION,
-        },
     ),
     "gemini-2.5-flash": ModelCostDetails(
         input_cost_details={
-            "text": 0.15 / MILLION,
-            "image": 0.15 / MILLION,
-            "video": 0.15 / MILLION,
+            "text": 0.30 / MILLION,
+            "image": 0.30 / MILLION,
+            "video": 0.30 / MILLION,
             "audio": 1 / MILLION,
         },
         output_cost_details={
-            "text": 0.6 / MILLION,
+            "text": 2.5 / MILLION,
         },
         reasoning_cost_details={
-            "text": 3.5 / MILLION,
+            "text": 2.5 / MILLION,
         },
         cache_read_cost_details={
-            "text": 0.0375 / MILLION,
-            "image": 0.0375 / MILLION,
-            "video": 0.0375 / MILLION,
-            "audio": 0.25 / MILLION,
+            "text": 0.03 / MILLION,
+            "image": 0.03 / MILLION,
+            "video": 0.03 / MILLION,
+            "audio": 0.1 / MILLION,
         },
     ),
     "gemini-2.5-flash-lite": ModelCostDetails(
@@ -450,10 +585,10 @@ GOOGLE_GENAI_MODEL_MAPPING = {
             "text": 0.4 / MILLION,
         },
         cache_read_cost_details={
-            "text": 0.025 / MILLION,
-            "image": 0.025 / MILLION,
-            "video": 0.025 / MILLION,
-            "audio": 0.125 / MILLION,
+            "text": 0.01 / MILLION,
+            "image": 0.01 / MILLION,
+            "video": 0.01 / MILLION,
+            "audio": 0.03 / MILLION,
         },
     ),
     "gemini-2.5-flash-preview-05-20": ModelCostDetails(
@@ -531,14 +666,14 @@ GOOGLE_GENAI_MODEL_MAPPING = {
             "high_limit": 200000,
         },
         cache_read_cost_details={
-            "text": 0.31 / MILLION,
-            "image": 0.31 / MILLION,
-            "video": 0.31 / MILLION,
-            "audio": 0.31 / MILLION,
-            "text_high": 0.625 / MILLION,
-            "image_high": 0.625 / MILLION,
-            "video_high": 0.625 / MILLION,
-            "audio_high": 0.625 / MILLION,
+            "text": 0.125 / MILLION,
+            "image": 0.125 / MILLION,
+            "video": 0.125 / MILLION,
+            "audio": 0.125 / MILLION,
+            "text_high": 0.25 / MILLION,
+            "image_high": 0.25 / MILLION,
+            "video_high": 0.25 / MILLION,
+            "audio_high": 0.25 / MILLION,
             "high_limit": 200000,
         },
     ),
@@ -786,17 +921,6 @@ GOOGLE_GENAI_MODEL_MAPPING = {
             "high_limit": 128000,
         },
         output_cost_details={
-            "text": 5 / MILLION,
-            "image": 5 / MILLION,
-            "video": 5 / MILLION,
-            "audio": 5 / MILLION,
-            "text_high": 10 / MILLION,
-            "image_high": 10 / MILLION,
-            "video_high": 10 / MILLION,
-            "audio_high": 10 / MILLION,
-            "high_limit": 128000,
-        },
-        reasoning_cost_details={
             "text": 5 / MILLION,
             "image": 5 / MILLION,
             "video": 5 / MILLION,

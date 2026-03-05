@@ -103,7 +103,7 @@ def add_input_row(
         bool, "Whether the input is required for extraction"
     ] = False,
 ) -> str | Command:
-    existing_input_schema = state.get("input_schema", [])
+    existing_input_schema = _clean_schema(state.get("input_schema", []))
     new_items = []
 
     if not name or len(name) > 64:
@@ -187,7 +187,7 @@ def add_input_row(
     additional_info = ""
     if input_type == "chart":
         figure_number_row = UserInputRow(
-            name="figure_number",
+            name="Figure Number",
             description=(
                 "The figure number or label identifying this chart in the document "
                 "(e.g., 'Figure 1', 'Fig. 2A', '3B'). This helps locate the chart "
@@ -199,7 +199,7 @@ def add_input_row(
         new_items.append(figure_number_row)
 
         chart_legend_row = UserInputRow(
-            name="chart_legend",
+            name="Legend Image",
             description=(
                 "The legend or key image associated with this chart, "
                 "containing labels, colors, symbols, and their explanations. "
@@ -211,7 +211,7 @@ def add_input_row(
         new_items.append(chart_legend_row)
 
         additional_info = (
-            " Additionally, 'figure_number' (text) and 'chart_legend' (image) "
+            " Additionally, 'Figure Number' (text) and 'Legend Image' (image) "
             "inputs were automatically added."
         )
 
@@ -230,6 +230,41 @@ def add_input_row(
             "input_schema": new_items,
         }
     )
+
+
+def _check_root_column_count(
+    output_schema: list, excluding_name: str | None = None
+) -> str:
+    """Return a warning string if adding a root column exceeds safe limits."""
+    existing_roots = [
+        r
+        for r in output_schema
+        if r.is_root and (excluding_name is None or r.name != excluding_name)
+    ]
+    count = len(existing_roots)
+    if count >= 2:
+        root_names = ", ".join(f"'{r.name}'" for r in existing_roots)
+        return (
+            f" WARNING: This schema now has {count + 1} root columns "
+            f"({root_names}, plus this one). "
+            "Multiple root columns produce a Cartesian product of rows — "
+            f"for example, {count + 1} root columns with 4 values each "
+            f"would generate {4 ** (count + 1)} rows. "
+            "This is almost never the intended behavior. "
+            "STRONGLY CONSIDER: Set this column to is_root=False and keep only "
+            "1-2 root columns that best define the extraction granularity."
+        )
+    if count == 1:
+        existing_name = existing_roots[0].name
+        return (
+            f" NOTE: This schema now has 2 root columns "
+            f"('{existing_name}' and this one). "
+            "Two root columns create a Cartesian product — "
+            "e.g., 3 arms × 4 timepoints = 12 rows. "
+            "Only proceed if each combination should be a distinct row. "
+            "If not, set this column to is_root=False."
+        )
+    return ""
 
 
 @tool(description=ADD_OUTPUT_ROW_TOOL_DESCRIPTION)
@@ -292,6 +327,11 @@ def add_output_row(
                 "column, or remove the chart input first using delete_input_row."
             )
 
+    # Check: warn if too many root columns
+    root_warning = ""
+    if is_root:
+        root_warning = _check_root_column_count(existing_output_schema)
+
     if not description or not description.strip():
         return (
             "ERROR: Description cannot be empty. "
@@ -315,7 +355,13 @@ def add_output_row(
     if d_type == "number":
         unit_column_name = f"{name}_unit"
 
-        if unit_column_name not in [r.name for r in existing_output_schema]:
+        if len(unit_column_name) > 64:
+            additional_info = (
+                f" Note: Unit column '{unit_column_name}' was NOT auto-added "
+                "because the name would exceed 64 characters. "
+                "Add it manually with a shorter name if needed."
+            )
+        elif unit_column_name not in [r.name for r in existing_output_schema]:
             unit_row = ExtractionOutputRow(
                 name=unit_column_name,
                 description=(
@@ -336,7 +382,7 @@ def add_output_row(
     message = ToolMessage(
         content=(
             f"Output row '{name}' added successfully "
-            f"(type: {d_type}, root: {is_root}).{additional_info}"
+            f"(type: {d_type}, root: {is_root}).{additional_info}{root_warning}"
         ),
         tool_call_id=tool_call_id,
         name="add_output_row",
@@ -387,21 +433,21 @@ def delete_input_row(
     if row_to_delete.input_type == "chart":
         figure_number_row = None
         for row in input_schema:
-            if row.name == "figure_number":
+            if row.name == "Figure Number":
                 figure_number_row = row
                 break
         if figure_number_row:
             items_to_remove.append(figure_number_row)
-            additional_deletions.append("figure_number")
+            additional_deletions.append("Figure Number")
 
         chart_legend_row = None
         for row in input_schema:
-            if row.name == "chart_legend":
+            if row.name == "Legend Image":
                 chart_legend_row = row
                 break
         if chart_legend_row:
             items_to_remove.append(chart_legend_row)
-            additional_deletions.append("chart_legend")
+            additional_deletions.append("Legend Image")
 
     additional_info = ""
     if additional_deletions:
@@ -513,7 +559,7 @@ def update_input_row(
         "Whether the input is required (leave None to keep current)",
     ] = None,
 ) -> str | Command:
-    input_schema = state.get("input_schema", [])
+    input_schema = _clean_schema(state.get("input_schema", []))
     items_to_update = []
 
     if not input_schema:
@@ -563,6 +609,13 @@ def update_input_row(
                 "TROUBLESHOOT: Choose a different name."
             )
 
+    if description is not None and not description.strip():
+        return (
+            "ERROR: Description cannot be empty. "
+            "TROUBLESHOOT: Provide a meaningful description, "
+            "or omit the description parameter to keep the current one."
+        )
+
     if input_type is not None and input_type not in [
         "chart",
         "image",
@@ -605,6 +658,8 @@ def update_input_row(
             )
 
     updated_fields = []
+    additional_info = ""
+    new_companion_items = []
     updated_item = deepcopy(row_to_update)
     try:
         if updated_name is not None:
@@ -623,6 +678,42 @@ def update_input_row(
             updated_item.is_required = is_required
             updated_fields.append("is_required")
 
+        # Auto-add companions when changing to chart type
+        if input_type == "chart" and row_to_update.input_type != "chart":
+            updated_item.is_required = True
+            if "is_required" not in updated_fields:
+                updated_fields.append("is_required")
+
+            figure_number_row = UserInputRow(
+                name="Figure Number",
+                description=(
+                    "The figure number or label identifying this chart in the "
+                    "document (e.g., 'Figure 1', 'Fig. 2A', '3B'). This helps "
+                    "locate the chart in the source material."
+                ),
+                input_type="text",
+                is_required=False,
+            )
+            new_companion_items.append(figure_number_row)
+
+            chart_legend_row = UserInputRow(
+                name="Legend Image",
+                description=(
+                    "The legend or key image associated with this chart, "
+                    "containing labels, colors, symbols, and their explanations. "
+                    "This is essential for interpreting the digitized chart data "
+                    "correctly."
+                ),
+                input_type="image",
+                is_required=False,
+            )
+            new_companion_items.append(chart_legend_row)
+
+            additional_info = (
+                " Additionally, 'Figure Number' (text) and 'Legend Image' (image) "
+                "inputs were automatically added, and is_required was set to True."
+            )
+
         items_to_update.append(updated_item)
 
     except Exception as e:
@@ -636,7 +727,7 @@ def update_input_row(
     message = ToolMessage(
         content=(
             f"Input row '{display_name}' updated successfully. "
-            f"Updated fields: {', '.join(updated_fields)}"
+            f"Updated fields: {', '.join(updated_fields)}.{additional_info}"
         ),
         tool_call_id=tool_call_id,
         name="update_input_row",
@@ -645,7 +736,10 @@ def update_input_row(
     return Command(
         update={
             "messages": [message],
-            "input_schema": [UpdateItem(item) for item in items_to_update],
+            "input_schema": [
+                *(UpdateItem(item) for item in items_to_update),
+                *new_companion_items,
+            ],
         }
     )
 
@@ -727,6 +821,13 @@ def update_output_row(
                 "TROUBLESHOOT: Choose a different name."
             )
 
+    if description is not None and not description.strip():
+        return (
+            "ERROR: Description cannot be empty. "
+            "TROUBLESHOOT: Provide a meaningful description, "
+            "or omit the description parameter to keep the current one."
+        )
+
     if d_type is not None and d_type not in ["string", "number"]:
         return (
             f"ERROR: Invalid d_type '{d_type}'. "
@@ -745,6 +846,11 @@ def update_output_row(
                 "(is_root=False). TROUBLESHOOT: Keep is_root=False for this output "
                 "column, or remove the chart input first using delete_input_row."
             )
+
+    # Check: warn if too many root columns
+    root_warning = ""
+    if is_root is True and not row_to_update.is_root:
+        root_warning = _check_root_column_count(output_schema, excluding_name=name)
 
     updated_fields = []
     old_dtype = row_to_update.d_type
@@ -789,20 +895,27 @@ def update_output_row(
             break
 
     if d_type == "number" and old_dtype == "string" and unit_row_index == -1:
-        unit_row = ExtractionOutputRow(
-            name=new_unit_column_name,
-            description=(
-                f"The unit of measurement for {display_name}. Extract the exact unit "
-                f"as written in the source (e.g., 'mg', 'kg', 'mg/kg', '%', 'days', "
-                f"'months'). If no unit is specified, enter 'NA'."
-            ),
-            d_type="string",
-            is_root=False,
-        )
-        items_to_return.append(unit_row)
-        additional_info = (
-            f" Unit column '{new_unit_column_name}' was automatically added."
-        )
+        if len(new_unit_column_name) > 64:
+            additional_info = (
+                f" Note: Unit column '{new_unit_column_name}' was NOT auto-added "
+                "because the name would exceed 64 characters. "
+                "Add it manually with a shorter name if needed."
+            )
+        else:
+            unit_row = ExtractionOutputRow(
+                name=new_unit_column_name,
+                description=(
+                    f"The unit of measurement for {display_name}. Extract the exact "
+                    f"unit as written in the source (e.g., 'mg', 'kg', 'mg/kg', '%', "
+                    f"'days', 'months'). If no unit is specified, enter 'NA'."
+                ),
+                d_type="string",
+                is_root=False,
+            )
+            items_to_return.append(unit_row)
+            additional_info = (
+                f" Unit column '{new_unit_column_name}' was automatically added."
+            )
 
     elif d_type == "string" and old_dtype == "number" and unit_row_index != -1:
         items_to_return.append(RemoveItem(output_schema[unit_row_index]))
@@ -810,10 +923,39 @@ def update_output_row(
             f" Unit column '{old_unit_column_name}' was automatically removed."
         )
 
+    # Handle unit column rename when output column is renamed (type stays number)
+    elif (
+        updated_name is not None
+        and updated_name != name
+        and (d_type or old_dtype) == "number"
+        and unit_row_index != -1
+    ):
+        old_unit = output_schema[unit_row_index]
+        if len(new_unit_column_name) > 64:
+            additional_info = (
+                f" Note: Unit column '{old_unit_column_name}' was NOT renamed "
+                f"to '{new_unit_column_name}' because the new name would exceed "
+                "64 characters. Rename it manually with a shorter name if needed."
+            )
+        else:
+            renamed_unit = ExtractionOutputRow(
+                name=new_unit_column_name,
+                description=old_unit.description.replace(name, display_name),
+                d_type="string",
+                is_root=False,
+            )
+            items_to_return.append(RemoveItem(old_unit))
+            items_to_return.append(renamed_unit)
+            additional_info = (
+                f" Unit column renamed from '{old_unit_column_name}' "
+                f"to '{new_unit_column_name}'."
+            )
+
     message = ToolMessage(
         content=(
             f"Output row '{display_name}' updated successfully. "
             f"Updated fields: {', '.join(updated_fields)}.{additional_info}"
+            f"{root_warning}"
         ),
         tool_call_id=tool_call_id,
         name="update_output_row",

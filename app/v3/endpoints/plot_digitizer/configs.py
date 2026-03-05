@@ -8,7 +8,7 @@ load_dotenv()
 class Config(BaseSettings):
     LLM_NAME: str = "gpt-5.2"
     LEGEND_EXTRACTION_MODEL_NAME: str = "gemini-2.5-flash"
-    CLAUDE_MODEL_ID: str = "claude-sonnet-4-0"
+    CLAUDE_MODEL_ID: str = "claude-sonnet-4-6"
     CLAUDE_MAX_TOKENS: int = 64000
     LINEFORMER_API: str
     PD_BASE_ENDPOINT: str

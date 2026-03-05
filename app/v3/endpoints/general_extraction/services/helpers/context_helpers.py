@@ -1,3 +1,5 @@
+import gc
+import math
 from typing import Any
 
 import json_repair
@@ -26,6 +28,14 @@ from app.v3.endpoints.general_extraction.services.helpers.input_helpers import (
     check_if_numerical_labels_extracted,
     check_if_root_labels_extracted,
 )
+
+# Maximum number of LLM calls in a single batch.  When there are many labels
+# (e.g. 120+), submitting all calls at once creates massive peak memory
+# because each in-flight thread holds a full copy of the serialized message
+# (~10-20 MB per call due to Base64 PDF/images).  Processing in smaller
+# batches caps peak memory at  BATCH_LLM_CALLS * message_size  while still
+# maintaining high throughput via concurrent threads within each batch.
+BATCH_LLM_CALLS = 25
 
 
 def convert_answers_into_dict(
@@ -93,47 +103,74 @@ def batch_execute_context_agent_with_retry(
     schemas: list[BaseModel] = None,
     model_name: str = None,
 ) -> dict[str, Any]:
+    total = len(messages)
+    max_workers = max(1, min(total, ge_settings.MAX_PARALLEL_LLM_CALLS))
+
+    batch_size = min(total, BATCH_LLM_CALLS)
+    num_batches = math.ceil(total / batch_size) if batch_size > 0 else 1
+    workers_per_batch = max(1, min(batch_size, max_workers))
+
+    results = [None] * total
     failed_extractions = []
-    max_workers = max(1, min(len(messages), ge_settings.MAX_PARALLEL_LLM_CALLS))
-    with ContextThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = []
-        if schemas:
-            for _, (schema, message) in enumerate(zip(schemas, messages)):
+
+    for batch_idx in range(num_batches):
+        start = batch_idx * batch_size
+        end = min(start + batch_size, total)
+        batch_messages = messages[start:end]
+        batch_schemas = schemas[start:end] if schemas else None
+
+        if num_batches > 1:
+            logger.info(
+                f"Processing LLM batch {batch_idx + 1}/{num_batches}"
+                f" (labels {start + 1}-{end} of {total})"
+            )
+
+        with ContextThreadPoolExecutor(max_workers=workers_per_batch) as executor:
+            futures = []
+            if batch_schemas:
+                for schema, message in zip(batch_schemas, batch_messages):
+                    context_agent = label_context_generator_agent(
+                        model_name=model_name,
+                        schema=schema,
+                    )
+                    futures.append(
+                        executor.submit(
+                            invoke_llm_with_retry,
+                            context_agent,
+                            message,
+                            max_retries=ge_settings.MAX_RETRIES,
+                        )
+                    )
+            else:
                 context_agent = label_context_generator_agent(
                     model_name=model_name,
-                    schema=schema,
                 )
-                futures.append(
-                    executor.submit(
-                        invoke_llm_with_retry,
-                        context_agent,
-                        message,
-                        max_retries=ge_settings.MAX_RETRIES,
+                for message in batch_messages:
+                    futures.append(
+                        executor.submit(
+                            invoke_llm_with_retry,
+                            context_agent,
+                            message,
+                            max_retries=ge_settings.MAX_RETRIES,
+                        )
                     )
-                )
 
-        else:
-            context_agent = label_context_generator_agent(
-                model_name=model_name,
-            )
-            for message in messages:
-                futures.append(
-                    executor.submit(
-                        invoke_llm_with_retry,
-                        context_agent,
-                        message,
-                        max_retries=ge_settings.MAX_RETRIES,
-                    )
-                )
+        # Collect results for this batch
+        for i, future in enumerate(futures):
+            global_idx = start + i
+            try:
+                results[global_idx] = future.result()
+            except Exception as e:
+                logger.info(f"Error: {e}")
+                results[global_idx] = None
+                failed_extractions.append(global_idx)
 
-    results = []
-    for i, future in enumerate(futures):
-        try:
-            results.append(future.result())
-        except Exception as e:
-            logger.info(f"Error: {e}")
-            results.append(None)
-            failed_extractions.append(i)
+        # Eagerly free batch references to allow GC to reclaim serialized
+        # request/response data before the next batch starts.
+        del futures, batch_messages, batch_schemas
+        if num_batches > 1:
+            gc.collect()
+
     return results, failed_extractions
 
 
@@ -299,31 +336,19 @@ def get_summarized_contexts(
         numericals_extracted=numericals_extracted,
     )
 
-    logger.info("Creating inputs for fallback llm")
-    (
-        fallback_chain_inputs,
-        _,
-        _,
-    ) = create_chain_inputs(
-        project_id=project_id,
-        flag_id=flag_id,
-        table_structure=table_structure,
-        selected_labels=selected_labels,
-        inputs=inputs,
-        file_details=file_details,
-        has_roots=has_roots,
-        numericals_extracted=numericals_extracted,
-    )
-
     logger.info("Extracting answers for labels")
 
     final_answers = retrieve_answers_from_llm(
         model_name=model_name,
         fallback_model_name=fallback_model_name,
         messages=chain_inputs,
-        fallback_messages=fallback_chain_inputs,
+        fallback_messages=chain_inputs,
         schemas=all_schemas,
     )
+
+    del chain_inputs
+    gc.collect()
+
     table_structure = assign_answers_to_labels(
         table_structure=table_structure,
         final_answers=final_answers,

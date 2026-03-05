@@ -133,7 +133,14 @@ def general_extraction_task(
                         prev_generate_labels,
                         prev_table_structure,
                     )
-                    return general_extraction_task(response)
+                    # Instead of recursive call, loop with new inputs
+                    # (avoids holding both phases in memory simultaneously)
+                    del output  # free memory from phase 1
+                    inputs = response
+                    if ("metadata" not in inputs) or (not inputs["metadata"]):
+                        inputs["metadata"] = {}
+                    retry_count = 0
+                    continue
                 else:
                     send_to_backend(
                         BackendEventEnumType.PRESET_GENERAL_EXTRACTION, output

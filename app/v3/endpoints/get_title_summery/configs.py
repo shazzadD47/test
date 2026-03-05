@@ -18,7 +18,7 @@ class Config(BaseSettings):
     MINIMUM_THRESHOLD: float = 0.1
     SECOND_CATEGORY_THRESHOLD: float = 0.2
 
-    CLAUDE_MODEL: str = "claude-sonnet-4-0"
+    CLAUDE_MODEL: str = "claude-sonnet-4-6"
 
     CHART_DETEC_ENDPOINT: str = (
         "https://chartdete.ai.delineate.pro/api/v1/chart-dete/completion"

@@ -13,7 +13,7 @@ class Config(BaseSettings):
 
     IMAGE_EDIT_LLM: str = "gemini-2.5-flash"
 
-    REASONING_LLM: str = "claude-3-7-sonnet-20250219"
+    REASONING_LLM: str = "claude-sonnet-4-6"
 
     GEMINI_25_FLASH_INPUT_LIMIT: int = 1000000
     GEMINI_25_FLASH_OUTPUT_LIMIT: int = 65536

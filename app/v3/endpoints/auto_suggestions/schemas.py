@@ -77,6 +77,9 @@ class AutoFigureConnectionAnnotation(BaseModel):
         ...,
         description="Footnote given in the documents.",
     )
+    chartType: str | None = Field(
+        ..., description="The chart type of the figure if it is a plot."
+    )
 
 
 class AutoFigureSuggestion(BaseModel):

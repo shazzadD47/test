@@ -20,7 +20,7 @@ import pandas as pd
 from app.utils.download import download_file_from_url
 from app.v3.endpoints.merging.constants import TableNames
 from app.v3.endpoints.merging.logging import logger
-from app.v3.endpoints.merging.schemas import SingleError, TablesByType
+from app.v3.endpoints.merging.schemas import QCError, TablesByType, merge_error
 
 
 def _normalize_table_type(table_type: str | None) -> str | None:
@@ -55,7 +55,7 @@ def _infer_observation_table_from_name(table_name: str) -> bool:
     return "observation" in n and "table" in n
 
 
-def load_and_parse_tables(table_dict: dict) -> tuple[TablesByType, list[SingleError]]:
+def load_and_parse_tables(table_dict: dict) -> tuple[TablesByType, list[QCError]]:
     """
     Download each table from table_url, parse CSV, and group by type.
 
@@ -77,10 +77,10 @@ def load_and_parse_tables(table_dict: dict) -> tuple[TablesByType, list[SingleEr
             "observation_table": [],
             "paper_labels": [df_paper, ...],  # all remaining tables
         }
-        errors = [{"error_name": "...", "error_message": "..."}]  # if any
+        errors = [QCError(...), ...]  # if any
     """
     tables: list[dict] = table_dict.get("tables") or []
-    errors: list[SingleError] = []
+    errors: list[QCError] = []
     tables_by_type: TablesByType = {
         TableNames.OBSERVATION.value: [],
         TableNames.DOSING.value: [],
@@ -96,13 +96,13 @@ def load_and_parse_tables(table_dict: dict) -> tuple[TablesByType, list[SingleEr
 
         if not table_url or not str(table_url).strip():
             errors.append(
-                {
-                    "error_name": f"Missing table_url: {table_name}",
-                    "error_message": (
+                merge_error(
+                    f"Missing table_url: {table_name}",
+                    (
                         f"Table '{table_name}' has no table_url. "
                         "Each table must provide a table_url for download."
                     ),
-                }
+                )
             )
             continue
 
@@ -110,12 +110,10 @@ def load_and_parse_tables(table_dict: dict) -> tuple[TablesByType, list[SingleEr
         _, file_content = download_file_from_url(table_url)
         if file_content is None:
             errors.append(
-                {
-                    "error_name": f"Download failed: {table_name}",
-                    "error_message": (
-                        f"Failed to download table '{table_name}' from URL."
-                    ),
-                }
+                merge_error(
+                    f"Download failed: {table_name}",
+                    f"Failed to download table '{table_name}' from URL.",
+                )
             )
             continue
 
@@ -124,13 +122,13 @@ def load_and_parse_tables(table_dict: dict) -> tuple[TablesByType, list[SingleEr
             decoded = file_content.decode("utf-8")
         except UnicodeDecodeError as e:
             errors.append(
-                {
-                    "error_name": f"Decode error: {table_name}",
-                    "error_message": (
+                merge_error(
+                    f"Decode error: {table_name}",
+                    (
                         f"Table '{table_name}' could not be decoded as UTF-8. "
                         f"Error: {e}"
                     ),
-                }
+                )
             )
             continue
 
@@ -138,25 +136,23 @@ def load_and_parse_tables(table_dict: dict) -> tuple[TablesByType, list[SingleEr
             df = pd.read_csv(StringIO(decoded))
         except Exception as e:
             errors.append(
-                {
-                    "error_name": f"Parse error: {table_name}",
-                    "error_message": (
+                merge_error(
+                    f"Parse error: {table_name}",
+                    (
                         f"Table '{table_name}' could not be parsed as CSV. "
                         f"Check content and format. Error: {e}"
                     ),
-                }
+                )
             )
             continue
 
         # Skip empty tables
         if df.empty and len(df.columns) == 0:
             errors.append(
-                {
-                    "error_name": f"Empty table: {table_name}",
-                    "error_message": (
-                        f"Table '{table_name}' is empty after parse; skipping."
-                    ),
-                }
+                merge_error(
+                    f"Empty table: {table_name}",
+                    f"Table '{table_name}' is empty after parse; skipping.",
+                )
             )
             continue
 

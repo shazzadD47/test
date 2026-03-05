@@ -1,3 +1,5 @@
+import re
+
 from sqlalchemy import select
 
 from app.configs import settings
@@ -16,6 +18,17 @@ from app.v3.endpoints.auto_suggestions.constants import (
 from app.v3.endpoints.auto_suggestions.schemas import (
     AutoFigureConnectionAnnotation,
 )
+
+
+def extract_chart_type(summary: str) -> str | None:
+    if not summary:
+        return None
+
+    match = re.search(r"Chart Type:\s*([A-Za-z0-9_\- ]+)", summary, re.IGNORECASE)
+    if match:
+        return match.group(1).strip().lower()
+
+    return None
 
 
 def get_sub_figure_all_data(
@@ -82,6 +95,7 @@ def get_sub_figure_all_data(
             "caption": caption,
             "description": summary,
             "footnote": footnote,
+            "chartType": extract_chart_type(summary),
         }
         all_data.append(temp_data)
 

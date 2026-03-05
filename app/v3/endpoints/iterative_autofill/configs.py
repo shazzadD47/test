@@ -7,7 +7,7 @@ load_dotenv()
 class Config(BaseSettings):
     OPENAI_MODEL_NAME: str = "gpt-4.1"
     OPENAI_MAX_TOKENS: int = 16384
-    CLAUDE_MODEL_ID: str = "claude-3-7-sonnet-latest"
+    CLAUDE_MODEL_ID: str = "claude-sonnet-4-6"
     CLAUDE_MAX_TOKENS: int = 8192
     BATCH_SIZE: int = 32
     QUERY_REPHRASE_BATCH_SIZE: int = 64

@@ -66,6 +66,9 @@ FINAL_COLUMNS_TO_DROP = [
 ]
 
 # ----- New (non-legacy) merge flow constants -----
+# Columns used only for sorting or internal logic; must not appear in v1 output.
+INTERNAL_COLUMNS_TO_DROP: list[str] = ["_ORD", "_OBS_ORIGIN"]
+
 # Map from possible column names (after uppercase) to final schema name.
 RENAME_MAP: dict[str, str] = {
     "FILENAME": "FILE_NAME",

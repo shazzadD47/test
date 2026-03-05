@@ -70,12 +70,21 @@ def create_chain_inputs(
     custom_instructions = create_custom_instructions_prompt(
         inputs.get("custom_instruction")
     )
+
+    shared_content = _build_shared_content(
+        flag_id=flag_id,
+        project_id=project_id,
+        inputs=inputs,
+        file_details=file_details,
+    )
+
     primary_chain_inputs = _create_primary_chain_inputs(
         flag_id=flag_id,
         project_id=project_id,
         inputs=inputs,
         file_details=file_details,
         for_numerical_labels=False,
+        shared_content=shared_content,
     )
     if not numericals_extracted:
         primary_numerical_chain_inputs = _create_primary_chain_inputs(
@@ -84,6 +93,7 @@ def create_chain_inputs(
             inputs=inputs,
             file_details=file_details,
             for_numerical_labels=True,
+            shared_content=shared_content,
         )
     else:
         primary_numerical_chain_inputs = []
@@ -98,12 +108,84 @@ def create_chain_inputs(
     )
 
 
+def _build_shared_content(
+    flag_id: str,
+    project_id: str,
+    inputs: dict[str, Any] = None,
+    file_details: dict | None = None,
+) -> dict[str, Any]:
+    """
+    Pre-compute the expensive, shared content that is identical between
+    regular and numerical chain inputs:
+      - PDF Base64 payload (or text fallback)
+      - Supplementary file Base64 payloads
+      - Media / image inputs
+
+    Returns a dict with keys:
+      "content_placeholder" – the primary PDF/text content dict
+      "supplementary_contents" – list of (supp_flag_id, supp_content_dict)
+      "media_inputs_regular" – media inputs for regular labels
+      "media_inputs_numerical" – media inputs for numerical labels
+    """
+    # ── Primary PDF content ──────────────────────────────────────────
+    if (
+        isinstance(file_details, dict)
+        and "pdf_path" in file_details
+        and file_details["pdf_path"] != "N/A"
+    ):
+        pdf_path = file_details["pdf_path"]
+    else:
+        pdf_path = None
+
+    if pdf_path is not None:
+        content_placeholder = create_file_input(
+            pdf_path, model_name=ge_settings.CONTEXT_GENERATOR_FALLBACK_LLM
+        )
+    else:
+        content_placeholder = {
+            "type": "text",
+            "text": retrieve_all_contexts(
+                flag_id=flag_id, project_id=project_id, file_type="document"
+            ),
+        }
+
+    # ── Supplementary files ──────────────────────────────────────────
+    supplementary_contents: list[tuple[str, dict]] = []
+    supplementary_paths = (
+        file_details.get("supplementary_paths", [])
+        if isinstance(file_details, dict)
+        else []
+    )
+    if supplementary_paths:
+        for supp_path in supplementary_paths:
+            supp_filename = os.path.basename(supp_path)
+            supp_flag_id = os.path.splitext(supp_filename)[0]
+            supp_content = create_file_input(
+                supp_path, model_name=ge_settings.CONTEXT_GENERATOR_FALLBACK_LLM
+            )
+            supplementary_contents.append((supp_flag_id, supp_content))
+
+    # ── Media inputs (images / charts / tables) ──────────────────────
+    # create_media_inputs mutates item_data in-place (sets image_base64)
+    # so after the first call the second call is essentially free.
+    media_inputs_regular = create_media_inputs(flag_id, inputs, False)
+    media_inputs_numerical = create_media_inputs(flag_id, inputs, True)
+
+    return {
+        "content_placeholder": content_placeholder,
+        "supplementary_contents": supplementary_contents,
+        "media_inputs_regular": media_inputs_regular,
+        "media_inputs_numerical": media_inputs_numerical,
+    }
+
+
 def _create_primary_chain_inputs(
     flag_id: str,
     project_id: str,
     inputs: dict[str, Any] = None,
     file_details: dict | None = None,
     for_numerical_labels: bool = False,
+    shared_content: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     today = datetime.now().strftime("%Y-%m-%d %A")
     # create system instruction
@@ -119,32 +201,55 @@ def _create_primary_chain_inputs(
             )
         ]
 
-    # create knowledge file inputs
-
-    # check if the pdf_path is in the file_details, if yes, then add it to
-    # the messages
-    if (
-        isinstance(file_details, dict)
-        and "pdf_path" in file_details
-        and file_details["pdf_path"] != "N/A"
-    ):
-        pdf_path = file_details["pdf_path"]
+    # ── Use pre-built shared content if available ────────────────────
+    if shared_content is not None:
+        content_placeholder = shared_content["content_placeholder"]
+        supplementary_contents = shared_content["supplementary_contents"]
+        if for_numerical_labels:
+            media_inputs = shared_content["media_inputs_numerical"]
+        else:
+            media_inputs = shared_content["media_inputs_regular"]
     else:
-        pdf_path = None
+        # Fallback: compute content from scratch (backwards-compatible)
+        if (
+            isinstance(file_details, dict)
+            and "pdf_path" in file_details
+            and file_details["pdf_path"] != "N/A"
+        ):
+            pdf_path = file_details["pdf_path"]
+        else:
+            pdf_path = None
 
-    if pdf_path is not None:
-        # convert pdf data to base64
-        content_placeholder = create_file_input(
-            pdf_path, model_name=ge_settings.CONTEXT_GENERATOR_FALLBACK_LLM
+        if pdf_path is not None:
+            content_placeholder = create_file_input(
+                pdf_path, model_name=ge_settings.CONTEXT_GENERATOR_FALLBACK_LLM
+            )
+        else:
+            content_placeholder = {
+                "type": "text",
+                "text": retrieve_all_contexts(
+                    flag_id=flag_id, project_id=project_id, file_type="document"
+                ),
+            }
+
+        supplementary_contents = []
+        supplementary_paths = (
+            file_details.get("supplementary_paths", [])
+            if isinstance(file_details, dict)
+            else []
         )
-    else:
-        content_placeholder = {
-            "type": "text",
-            "text": retrieve_all_contexts(
-                flag_id=flag_id, project_id=project_id, file_type="document"
-            ),
-        }
+        if supplementary_paths:
+            for supp_path in supplementary_paths:
+                supp_filename = os.path.basename(supp_path)
+                supp_flag_id = os.path.splitext(supp_filename)[0]
+                supp_content = create_file_input(
+                    supp_path, model_name=ge_settings.CONTEXT_GENERATOR_FALLBACK_LLM
+                )
+                supplementary_contents.append((supp_flag_id, supp_content))
 
+        media_inputs = create_media_inputs(flag_id, inputs, for_numerical_labels)
+
+    # ── Build knowledge file inputs ──────────────────────────────────
     if for_numerical_labels:
         knowledge_file_inputs = [
             {"type": "text", "text": NUMERICAL_START_OF_KNOWLEDGE_FILES_PROMPT}
@@ -162,22 +267,14 @@ def _create_primary_chain_inputs(
     ]
 
     # Add supplementary files if available
-    supplementary_paths = (
-        file_details.get("supplementary_paths", [])
-        if isinstance(file_details, dict)
-        else []
-    )
-    if supplementary_paths and len(supplementary_paths) > 0:
+    if supplementary_contents:
         knowledge_file_inputs.append(
             {"type": "text", "text": START_OF_SUPPLEMENTARY_FILES_PROMPT}
         )
 
-        for supp_index, supp_path in enumerate(supplementary_paths, start=1):
-            # Extract supplementary flag_id from the file path
-            # Path format is typically: .../supplementaries/{supplementary_flag_id}.pdf
-            supp_filename = os.path.basename(supp_path)
-            supp_flag_id = os.path.splitext(supp_filename)[0]
-
+        for supp_index, (supp_flag_id, supp_content) in enumerate(
+            supplementary_contents, start=1
+        ):
             knowledge_file_inputs.append(
                 {
                     "type": "text",
@@ -186,12 +283,7 @@ def _create_primary_chain_inputs(
                     ),
                 }
             )
-
-            # Add supplementary file content
-            supp_content_placeholder = create_file_input(
-                supp_path, model_name=ge_settings.CONTEXT_GENERATOR_FALLBACK_LLM
-            )
-            knowledge_file_inputs.append(supp_content_placeholder)
+            knowledge_file_inputs.append(supp_content)
 
         # Close the supplementary files section
         knowledge_file_inputs.append(
@@ -201,9 +293,6 @@ def _create_primary_chain_inputs(
     knowledge_file_inputs.append(
         {"type": "text", "text": END_OF_KNOWLEDGE_FILES_PROMPT}
     )
-
-    # create media file inputs
-    media_inputs = create_media_inputs(flag_id, inputs, for_numerical_labels)
 
     all_contents = (
         [{"type": "text", "text": START_OF_INPUTS_PROMPT}]
