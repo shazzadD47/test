@@ -1,0 +1,9 @@
+venv/
+myenv/
+./venv
+./myenv
+.venv
+tests
+migrations
+k8s/
+data/
